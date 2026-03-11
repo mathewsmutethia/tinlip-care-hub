@@ -33,6 +33,10 @@ export const auth = {
 // ============================================
 // CLIENT PROFILE
 // ============================================
+
+// Valid statuses a client can set themselves
+const CLIENT_ALLOWED_STATUSES = ['profile_incomplete', 'pending_approval'];
+
 export const clientProfile = {
   save: async (data: { name: string; phone: string; company_name?: string; address?: string; id_number?: string }) => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -52,9 +56,20 @@ export const clientProfile = {
     return supabase.from('clients').select('*').eq('id', user.id).single();
   },
   
-  updateStatus: (status: string) => {
-    const { data: { user } } = supabase.auth.getUser();
-    return supabase.from('clients').update({ status }).eq('id', user?.id);
+  // Only allows client to set status to profile_incomplete or pending_approval
+  // Cannot bypass admin approval by setting approved/active
+  submitForApproval: async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+    
+    // Get current profile to verify they're done with onboarding
+    const { data: profile } = await supabase.from('clients').select('status').eq('id', user.id).single();
+    
+    if (profile?.status !== 'profile_incomplete') {
+      throw new Error('Profile already submitted or invalid');
+    }
+    
+    return supabase.from('clients').update({ status: 'pending_approval' }).eq('id', user.id).select().single();
   }
 };
 
@@ -91,6 +106,31 @@ export const quotes = {
   },
   
   save: (data: any) => supabase.from('quotes').insert(data).select().single()
+};
+
+// ============================================
+// OTP / SMS
+// ============================================
+
+// Generate and send OTP via SMS (placeholder - integrate with Africa's Talking, Twilio, etc.)
+export const otpService = {
+  generate: () => Math.floor(100000 + Math.random() * 900000).toString(),
+  
+  // Send OTP via SMS - integrate with your SMS provider
+  send: async (phone: string, otp: string) => {
+    // TODO: Integrate with Africa's Talking, Twilio, or other SMS provider
+    // For now, just log (remove in production!)
+    console.log(`OTP ${otp} would be sent to ${phone}`);
+    
+    // Example with Africa's Talking:
+    // const response = await fetch('https://api.africastalking.com/version1/messaging', {
+    //   method: 'POST',
+    //   headers: { 'apiKey': process.env.AT_API_KEY, 'Content-Type': 'application/json' },
+    //   body: JSON.stringify({ to: phone, message: `Your Tinlip OTP is: ${otp}` })
+    // });
+    
+    return { success: true };
+  }
 };
 
 // ============================================

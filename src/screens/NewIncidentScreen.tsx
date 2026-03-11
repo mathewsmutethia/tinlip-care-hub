@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
-import { vehicles, incidents } from '@/lib/supabase';
+import { vehicles, incidents, otpService, clientProfile } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ArrowLeft, MapPin, Car, CheckCircle2, Loader2 } from 'lucide-react';
@@ -43,16 +43,25 @@ export default function NewIncidentScreen() {
     }
   };
 
-  const handleStart = () => {
+  const handleStart = async () => {
     if (!selectedVehicle || !selectedType || !description || !location) {
       setError('Please fill all required fields');
       return;
     }
     setError('');
+    
     // Generate OTP
-    const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
+    const newOtp = otpService.generate();
     setGeneratedOtp(newOtp);
-    console.log('OTP:', newOtp); // For testing
+    
+    // Get user's phone number
+    const { data: profile } = await clientProfile.get();
+    
+    // Send OTP via SMS (placeholder)
+    if (profile?.phone) {
+      await otpService.send(profile.phone, newOtp);
+    }
+    
     setStep(4);
   };
 
@@ -216,12 +225,7 @@ export default function NewIncidentScreen() {
                 <span className="text-3xl">🔐</span>
               </div>
               <h2 className="text-xl font-bold text-foreground mb-2">Verify Your Identity</h2>
-              <p className="text-sm text-muted-foreground mb-4">We sent a 6-digit code to your phone</p>
-              
-              {/* Debug: Show OTP */}
-              <div className="mb-4 p-2 bg-gray-100 rounded text-xs">
-                Test OTP: <strong>{generatedOtp}</strong>
-              </div>
+              <p className="text-sm text-muted-foreground mb-8">Enter the 6-digit code sent to your phone</p>
               
               <div className="flex justify-center gap-2 mb-6">
                 {Array.from({ length: 6 }).map((_, i) => (

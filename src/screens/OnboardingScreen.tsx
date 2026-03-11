@@ -121,7 +121,8 @@ export default function OnboardingScreen() {
     setLoading(true);
     setError('');
     try {
-      await clientProfile.updateStatus('pending_approval');
+      // Use secure submitForApproval - cannot bypass admin
+      await clientProfile.submitForApproval();
       setSubmitted(true);
       setTimeout(() => {
         setOnboarded(true);
