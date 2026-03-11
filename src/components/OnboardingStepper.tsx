@@ -132,7 +132,7 @@ export default function OnboardingStepper() {
     }
     setLoading(true);
     try {
-      await clientProfile.updateStatus('pending_approval');
+      await clientProfile.submitForApproval();
       alert('Application submitted! We will review within 24 hours.');
     } catch (e: any) {
       setError(e.message);
