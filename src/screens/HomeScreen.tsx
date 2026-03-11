@@ -5,7 +5,9 @@ import { Zap, Car, CreditCard, ClipboardList, ChevronRight, Shield } from 'lucid
 import { Button } from '@/components/ui/button';
 
 export default function HomeScreen() {
-  const { navigate, selectIncident, selectVehicle } = useApp();
+  const { navigate, selectIncident, selectVehicle, profile, user } = useApp();
+  const displayName = profile?.name?.split(' ')[0] || user?.email?.split('@')[0] || 'there';
+  const initials = (profile?.name || user?.email || 'U').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
   const daysRemaining = getDaysRemaining(mockUser.coverageEnd);
   const activeIncident = mockIncidents.find(i => i.status !== 'closed');
 
@@ -15,11 +17,11 @@ export default function HomeScreen() {
       <div className="px-4 pt-6 pb-4 md:px-0">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">{getGreeting()}, James 👋</h1>
+            <h1 className="text-2xl font-bold text-foreground">{getGreeting()}, {displayName} 👋</h1>
             <p className="text-sm text-muted-foreground mt-0.5">Let's keep your vehicles protected</p>
           </div>
           <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-bold text-sm">
-            JM
+            {initials}
           </div>
         </div>
       </div>
