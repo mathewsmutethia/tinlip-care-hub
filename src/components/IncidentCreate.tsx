@@ -43,7 +43,7 @@ export default function IncidentCreate() {
     setError('');
     const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
     setGeneratedOtp(newOtp);
-    console.log('OTP:', newOtp);
+    
     setStep(2);
   };
 
