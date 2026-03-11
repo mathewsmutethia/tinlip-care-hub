@@ -109,7 +109,7 @@ export const otpService = {
   
   // TODO: Integrate with SMS provider (Africa's Talking, Twilio)
   send: async (phone: string, otp: string) => {
-    console.log(`OTP ${otp} would be sent to ${phone}`);
+    // TODO: Send OTP via SMS provider (Africa's Talking, Twilio)
     return { success: true };
   }
 };

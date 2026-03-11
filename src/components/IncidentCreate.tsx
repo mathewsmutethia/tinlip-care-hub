@@ -43,7 +43,7 @@ export default function IncidentCreate() {
     setError('');
     const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
     setGeneratedOtp(newOtp);
-    console.log('OTP:', newOtp);
+    
     setStep(2);
   };
 
@@ -142,9 +142,7 @@ export default function IncidentCreate() {
       {step === 2 && (
         <div className="space-y-4">
           <h2 className="text-xl font-bold">Verify with OTP</h2>
-          <div className="p-4 bg-gray-50 rounded-lg">
-            <p className="text-sm text-gray-600">OTP for testing: <strong>{generatedOtp}</strong></p>
-          </div>
+          <p className="text-sm text-gray-600">Enter the 6-digit code sent to your phone</p>
           <input
             type="text"
             value={otp}
