@@ -52,8 +52,8 @@ export const clientProfile = {
     return supabase.from('clients').select('*').eq('id', user.id).single();
   },
   
-  updateStatus: (status: string) => {
-    const { data: { user } } = supabase.auth.getUser();
+  updateStatus: async (status: string) => {
+    const { data: { user } } = await supabase.auth.getUser();
     return supabase.from('clients').update({ status }).eq('id', user?.id);
   }
 };
