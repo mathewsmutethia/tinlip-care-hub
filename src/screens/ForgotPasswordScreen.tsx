@@ -1,13 +1,33 @@
 import { useState } from 'react';
 import { useApp } from '@/context/AppContext';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ArrowLeft, CheckCircle2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 export default function ForgotPasswordScreen() {
   const { navigate } = useApp();
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const handleReset = async () => {
+    if (!email) {
+      toast.error('Please enter your email');
+      return;
+    }
+    setLoading(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    setLoading(false);
+    if (error) {
+      toast.error(error.message);
+    } else {
+      setSent(true);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -30,13 +50,15 @@ export default function ForgotPasswordScreen() {
               <Button variant="outline" size="full" onClick={() => navigate('sign-in')}>Back to Sign In</Button>
             </div>
           ) : (
-            <div className="space-y-4">
+            <form onSubmit={(e) => { e.preventDefault(); handleReset(); }} className="space-y-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-foreground">Email</label>
                 <Input type="email" placeholder="your@email.com" value={email} onChange={(e) => setEmail(e.target.value)} className="h-12" />
               </div>
-              <Button variant="amber" size="full" onClick={() => setSent(true)}>Send Reset Link</Button>
-            </div>
+              <Button type="submit" variant="amber" size="full" disabled={loading}>
+                {loading ? 'Sending...' : 'Send Reset Link'}
+              </Button>
+            </form>
           )}
         </div>
       </div>

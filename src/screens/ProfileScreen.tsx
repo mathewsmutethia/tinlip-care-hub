@@ -1,10 +1,15 @@
 import { useApp } from '@/context/AppContext';
-import { mockUser } from '@/lib/mockData';
 import { Button } from '@/components/ui/button';
 import { FileText, Bell, Lock, ScrollText, HelpCircle, LogOut, ChevronRight } from 'lucide-react';
 
 export default function ProfileScreen() {
-  const { logout } = useApp();
+  const { logout, user, profile } = useApp();
+
+  const displayName = profile?.name || user?.email?.split('@')[0] || 'User';
+  const initials = displayName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  const email = profile?.email || user?.email || '';
+  const phone = profile?.phone || '';
+  const memberSince = user?.created_at ? new Date(user.created_at).toLocaleDateString('en-KE', { month: 'long', year: 'numeric' }) : '';
 
   const menuItems = [
     { icon: FileText, label: 'My Documents', action: () => {} },
@@ -21,20 +26,18 @@ export default function ProfileScreen() {
       </div>
 
       <div className="px-4 space-y-4 md:px-0">
-        {/* Profile Card */}
         <div className="bg-card border rounded-xl p-5 card-shadow flex items-center gap-4">
           <div className="w-16 h-16 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-bold text-xl font-heading">
-            {mockUser.avatarInitials}
+            {initials}
           </div>
           <div>
-            <p className="font-semibold text-lg text-foreground">{mockUser.fullName}</p>
-            <p className="text-sm text-muted-foreground">{mockUser.email}</p>
-            <p className="text-sm text-muted-foreground">{mockUser.phone}</p>
-            <p className="text-xs text-muted-foreground mt-1">Member since {mockUser.memberSince}</p>
+            <p className="font-semibold text-lg text-foreground">{displayName}</p>
+            <p className="text-sm text-muted-foreground">{email}</p>
+            {phone && <p className="text-sm text-muted-foreground">{phone}</p>}
+            {memberSince && <p className="text-xs text-muted-foreground mt-1">Member since {memberSince}</p>}
           </div>
         </div>
 
-        {/* Menu Items */}
         <div className="bg-card border rounded-xl card-shadow overflow-hidden">
           {menuItems.map((item, i) => (
             <button
@@ -49,7 +52,6 @@ export default function ProfileScreen() {
           ))}
         </div>
 
-        {/* Sign Out */}
         <button
           onClick={logout}
           className="w-full flex items-center justify-center gap-2 py-3 text-destructive font-medium text-sm hover:bg-destructive/5 rounded-xl transition-colors"
