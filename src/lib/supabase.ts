@@ -52,9 +52,17 @@ export const clientProfile = {
     return supabase.from('clients').select('*').eq('id', user.id).single();
   },
   
-  updateStatus: async (status: string) => {
+  // Secure: client can only submit for approval - cannot bypass admin
+  submitForApproval: async () => {
     const { data: { user } } = await supabase.auth.getUser();
-    return supabase.from('clients').update({ status }).eq('id', user?.id);
+    if (!user) throw new Error('Not authenticated');
+    
+    const { data: profile } = await supabase.from('clients').select('status').eq('id', user.id).single();
+    if (profile?.status !== 'profile_incomplete') {
+      throw new Error('Profile already submitted');
+    }
+    
+    return supabase.from('clients').update({ status: 'pending_approval' }).eq('id', user.id).select().single();
   }
 };
 
@@ -91,6 +99,19 @@ export const quotes = {
   },
   
   save: (data: any) => supabase.from('quotes').insert(data).select().single()
+};
+
+// ============================================
+// OTP SERVICE
+// ============================================
+export const otpService = {
+  generate: () => Math.floor(100000 + Math.random() * 900000).toString(),
+  
+  // TODO: Integrate with SMS provider (Africa's Talking, Twilio)
+  send: async (phone: string, otp: string) => {
+    console.log(`OTP ${otp} would be sent to ${phone}`);
+    return { success: true };
+  }
 };
 
 // ============================================
