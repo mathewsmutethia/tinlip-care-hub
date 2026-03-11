@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useApp } from '@/context/AppContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ArrowLeft, Upload, CheckCircle2, FileText, Plus, X } from 'lucide-react';
+import { ArrowLeft, Upload, CheckCircle2, FileText, Plus, X, Loader2 } from 'lucide-react';
+import { clientProfile, vehicles, documents } from '@/lib/supabase';
 
 interface VehicleForm {
   registration: string;
@@ -14,26 +15,122 @@ interface VehicleForm {
   mileage: string;
 }
 
-const emptyVehicle: VehicleForm = { registration: '', make: '', model: '', year: '2020', engineNumber: '', chassisNumber: '', mileage: '' };
+const emptyVehicle: VehicleForm = { registration: '', make: '', model: '', year: '2024', engineNumber: '', chassisNumber: '', mileage: '' };
 
 export default function OnboardingScreen() {
   const { navigate, setOnboarded } = useApp();
   const [step, setStep] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  
   const [personalForm, setPersonalForm] = useState({ fullName: '', phone: '', idNumber: '', address: '' });
+  const [idFile, setIdFile] = useState<File | null>(null);
   const [idUploaded, setIdUploaded] = useState(false);
-  const [vehicles, setVehicles] = useState<VehicleForm[]>([{ ...emptyVehicle }]);
+  
+  const [vehiclesList, setVehiclesList] = useState<VehicleForm[]>([{ ...emptyVehicle }]);
+  const [vehicleDocs, setVehicleDocs] = useState<{ logbook: File | null; insurance: File | null }[]>([{ logbook: null, insurance: null }]);
+  
   const [signed, setSigned] = useState(false);
   const [declared, setDeclared] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
   const steps = ['Personal Details', 'Add Vehicle', 'Agreement', 'Review & Submit'];
 
-  const handleSubmit = () => {
-    setSubmitted(true);
-    setTimeout(() => {
-      setOnboarded(true);
-      navigate('home');
-    }, 3000);
+  // Step 1: Save personal details
+  const handlePersonalSubmit = async () => {
+    if (!personalForm.fullName || !personalForm.phone || !personalForm.idNumber) {
+      setError('Please fill all required fields');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      await clientProfile.save({
+        name: personalForm.fullName,
+        phone: personalForm.phone,
+        address: personalForm.address || undefined,
+        id_number: personalForm.idNumber,
+      });
+      setStep(2);
+    } catch (e: any) {
+      setError(e.message || 'Failed to save. Try again.');
+    }
+    setLoading(false);
+  };
+
+  // Step 2: Save vehicles
+  const handleVehicleSubmit = async () => {
+    const v = vehiclesList[0];
+    if (!v.registration || !v.make || !v.model || !v.mileage) {
+      setError('Please fill all required vehicle fields');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      await vehicles.add({
+        registration: v.registration.toUpperCase(),
+        make: v.make,
+        model: v.model,
+        year: Number(v.year),
+        mileage: Number(v.mileage),
+        engine_number: v.engineNumber || undefined,
+        chassis_number: v.chassisNumber || undefined,
+      });
+      setStep(3);
+    } catch (e: any) {
+      setError(e.message || 'Failed to save vehicle. Try again.');
+    }
+    setLoading(false);
+  };
+
+  // Step 3: Upload documents
+  const handleDocumentsSubmit = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      // Upload ID if provided
+      if (idFile) {
+        await documents.uploadClientId(idFile);
+      }
+      
+      // Get vehicle ID and upload docs
+      const { data: vehicleData } = await vehicles.list();
+      if (vehicleData && vehicleData[0]) {
+        const vid = vehicleData[0].id;
+        if (vehicleDocs[0].logbook) {
+          await documents.uploadVehicleDoc(vid, 'logbook', vehicleDocs[0].logbook);
+        }
+        if (vehicleDocs[0].insurance) {
+          await documents.uploadVehicleDoc(vid, 'insurance', vehicleDocs[0].insurance);
+        }
+      }
+      setStep(4);
+    } catch (e: any) {
+      setError(e.message || 'Failed to upload documents. Try again.');
+    }
+    setLoading(false);
+  };
+
+  // Final submit
+  const handleSubmit = async () => {
+    if (!signed || !declared) {
+      setError('Please sign and accept the declaration');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      await clientProfile.updateStatus('pending_approval');
+      setSubmitted(true);
+      setTimeout(() => {
+        setOnboarded(true);
+        navigate('home');
+      }, 3000);
+    } catch (e: any) {
+      setError(e.message || 'Failed to submit. Try again.');
+    }
+    setLoading(false);
   };
 
   if (submitted) {
@@ -68,16 +165,23 @@ export default function OnboardingScreen() {
         <p className="text-xs text-muted-foreground">Step {step} of 4 — {steps[step - 1]}</p>
       </div>
 
+      {/* Error */}
+      {error && (
+        <div className="mx-6 mb-4 p-3 bg-red-50 text-red-600 rounded-lg text-sm">{error}</div>
+      )}
+
       {/* Content */}
       <div className="flex-1 px-6 pb-8 overflow-y-auto">
         <div className="max-w-md mx-auto animate-fade-in">
+          
+          {/* Step 1: Personal Details */}
           {step === 1 && (
             <div className="space-y-4">
               <h2 className="text-xl font-bold text-foreground">Personal Details</h2>
               {[
-                { label: 'Full Name', key: 'fullName', placeholder: 'James Mwangi', type: 'text' },
-                { label: 'Phone Number', key: 'phone', placeholder: '+254 712 345 678', type: 'tel' },
-                { label: 'ID Number / Company Reg', key: 'idNumber', placeholder: '12345678', type: 'text' },
+                { label: 'Full Name *', key: 'fullName', placeholder: 'James Mwangi', type: 'text' },
+                { label: 'Phone Number *', key: 'phone', placeholder: '+254 712 345 678', type: 'tel' },
+                { label: 'ID Number *', key: 'idNumber', placeholder: '12345678', type: 'text' },
                 { label: 'Physical Address', key: 'address', placeholder: 'Westlands, Nairobi', type: 'text' },
               ].map((f) => (
                 <div key={f.key} className="space-y-1.5">
@@ -93,45 +197,39 @@ export default function OnboardingScreen() {
               ))}
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-foreground">ID Document</label>
-                <button
-                  onClick={() => setIdUploaded(true)}
-                  className={`w-full h-24 border-2 border-dashed rounded-lg flex flex-col items-center justify-center gap-2 transition-colors ${idUploaded ? 'border-success bg-success/5' : 'border-border hover:border-primary'}`}
-                >
-                  {idUploaded ? (
-                    <>
-                      <CheckCircle2 className="w-6 h-6 text-success" />
-                      <span className="text-sm text-success font-medium">ID uploaded</span>
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="w-6 h-6 text-muted-foreground" />
-                      <span className="text-sm text-muted-foreground">Tap to upload</span>
-                    </>
-                  )}
-                </button>
+                <input
+                  type="file"
+                  accept="image/*,.pdf"
+                  onChange={(e) => {
+                    setIdFile(e.target.files?.[0] || null);
+                    setIdUploaded(!!e.target.files?.[0]);
+                  }}
+                  className="w-full h-24 border-2 border-dashed rounded-lg flex items-center justify-center text-sm text-muted-foreground cursor-pointer"
+                />
+                {idUploaded && <CheckCircle2 className="w-5 h-5 text-green-600 mt-1" />}
               </div>
-              <Button variant="amber" size="full" onClick={() => setStep(2)}>Save & Continue</Button>
+              <Button variant="amber" size="full" onClick={handlePersonalSubmit} disabled={loading}>
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save & Continue'}
+              </Button>
             </div>
           )}
 
+          {/* Step 2: Vehicles */}
           {step === 2 && (
             <div className="space-y-6">
-              <h2 className="text-xl font-bold text-foreground">Add Your Vehicles</h2>
-              {vehicles.map((v, idx) => (
+              <h2 className="text-xl font-bold text-foreground">Add Your Vehicle</h2>
+              {vehiclesList.map((v, idx) => (
                 <div key={idx} className="bg-card rounded-lg border p-4 space-y-3 card-shadow">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-semibold text-foreground">Vehicle {idx + 1}</span>
-                    {vehicles.length > 1 && (
-                      <button onClick={() => setVehicles(vehicles.filter((_, i) => i !== idx))} className="text-destructive"><X className="w-4 h-4" /></button>
-                    )}
                   </div>
                   {[
-                    { label: 'Registration', key: 'registration', placeholder: 'KBZ 123X' },
-                    { label: 'Make', key: 'make', placeholder: 'Toyota' },
-                    { label: 'Model', key: 'model', placeholder: 'Vitz' },
+                    { label: 'Registration *', key: 'registration', placeholder: 'KBZ 123X' },
+                    { label: 'Make *', key: 'make', placeholder: 'Toyota' },
+                    { label: 'Model *', key: 'model', placeholder: 'Vitz' },
                     { label: 'Engine Number', key: 'engineNumber', placeholder: '2NR-FKE-0847291' },
                     { label: 'Chassis Number', key: 'chassisNumber', placeholder: 'KSP130-0284751' },
-                    { label: 'Current Mileage (KM)', key: 'mileage', placeholder: '50000' },
+                    { label: 'Current Mileage (KM) *', key: 'mileage', placeholder: '50000' },
                   ].map((f) => (
                     <div key={f.key} className="space-y-1">
                       <label className="text-xs font-medium text-muted-foreground">{f.label}</label>
@@ -139,22 +237,22 @@ export default function OnboardingScreen() {
                         placeholder={f.placeholder}
                         value={(v as any)[f.key]}
                         onChange={(e) => {
-                          const updated = [...vehicles];
+                          const updated = [...vehiclesList];
                           (updated[idx] as any)[f.key] = e.target.value;
-                          setVehicles(updated);
+                          setVehiclesList(updated);
                         }}
                         className="h-10"
                       />
                     </div>
                   ))}
                   <div className="space-y-1">
-                    <label className="text-xs font-medium text-muted-foreground">Year</label>
+                    <label className="text-xs font-medium text-muted-foreground">Year *</label>
                     <select
                       value={v.year}
                       onChange={(e) => {
-                        const updated = [...vehicles];
+                        const updated = [...vehiclesList];
                         updated[idx].year = e.target.value;
-                        setVehicles(updated);
+                        setVehiclesList(updated);
                       }}
                       className="w-full h-10 px-3 rounded-md border bg-card text-sm"
                     >
@@ -165,29 +263,62 @@ export default function OnboardingScreen() {
                   </div>
                 </div>
               ))}
-              {vehicles.length < 5 && (
-                <button
-                  onClick={() => setVehicles([...vehicles, { ...emptyVehicle }])}
-                  className="flex items-center gap-2 text-primary text-sm font-medium hover:underline"
-                >
-                  <Plus className="w-4 h-4" /> Add Another Vehicle
-                </button>
-              )}
-              <Button variant="amber" size="full" onClick={() => setStep(3)}>Save & Continue</Button>
+              <Button variant="amber" size="full" onClick={handleVehicleSubmit} disabled={loading}>
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save & Continue'}
+              </Button>
             </div>
           )}
 
+          {/* Step 3: Documents */}
           {step === 3 && (
+            <div className="space-y-4">
+              <h2 className="text-xl font-bold text-foreground">Vehicle Documents</h2>
+              
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-foreground">Logbook *</label>
+                <input
+                  type="file"
+                  accept="image/*,.pdf"
+                  onChange={(e) => {
+                    const updated = [...vehicleDocs];
+                    updated[0].logbook = e.target.files?.[0] || null;
+                    setVehicleDocs(updated);
+                  }}
+                  className="w-full h-24 border-2 border-dashed rounded-lg flex items-center justify-center text-sm text-muted-foreground cursor-pointer"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-foreground">Insurance *</label>
+                <input
+                  type="file"
+                  accept="image/*,.pdf"
+                  onChange={(e) => {
+                    const updated = [...vehicleDocs];
+                    updated[0].insurance = e.target.files?.[0] || null;
+                    setVehicleDocs(updated);
+                  }}
+                  className="w-full h-24 border-2 border-dashed rounded-lg flex items-center justify-center text-sm text-muted-foreground cursor-pointer"
+                />
+              </div>
+
+              <Button variant="amber" size="full" onClick={handleDocumentsSubmit} disabled={loading}>
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save & Continue'}
+              </Button>
+            </div>
+          )}
+
+          {/* Step 4: Agreement */}
+          {step === 4 && (
             <div className="space-y-4">
               <h2 className="text-xl font-bold text-foreground">Agreement & Declaration</h2>
               <div className="bg-card rounded-lg border p-4 max-h-48 overflow-y-auto text-sm text-muted-foreground card-shadow">
                 <h3 className="font-semibold text-foreground mb-2">Tinlip Autocare Service Agreement</h3>
-                <p className="mb-2">This agreement is entered into between Tinlip Autocare Limited ("Provider") and the undersigned client ("Client").</p>
-                <p className="mb-2">1. <strong>Coverage Scope:</strong> The Provider shall offer vehicle protection services including roadside assistance, towing, mechanical diagnosis, regular servicing coordination, and spare parts procurement.</p>
-                <p className="mb-2">2. <strong>Client Obligations:</strong> The Client agrees to provide accurate vehicle and personal information, maintain valid insurance, and report incidents promptly.</p>
-                <p className="mb-2">3. <strong>Payment Terms:</strong> Annual premiums are payable via M-Pesa. Coverage activates upon confirmed payment.</p>
-                <p className="mb-2">4. <strong>Claims Process:</strong> All service requests must be initiated through the Tinlip client portal. Unauthorized third-party repairs are not covered.</p>
-                <p>5. <strong>Termination:</strong> Either party may terminate with 30 days written notice. No refunds for partial periods.</p>
+                <p className="mb-2">This agreement is between Tinlip Autocare Limited ("Provider") and the client ("Client").</p>
+                <p className="mb-2">1. Coverage: roadside assistance, towing, mechanical diagnosis, servicing, spares.</p>
+                <p className="mb-2">2. Client Obligations: accurate info, valid insurance, prompt reporting.</p>
+                <p className="mb-2">3. Payment: annual via M-Pesa. Coverage activates on payment.</p>
+                <p>4. Claims: must be initiated through the Tinlip portal.</p>
               </div>
               <Button variant="outline" size="default" className="gap-2">
                 <FileText className="w-4 h-4" /> Download PDF
@@ -212,43 +343,12 @@ export default function OnboardingScreen() {
                 <input type="checkbox" checked={declared} onChange={(e) => setDeclared(e.target.checked)} className="mt-1 w-4 h-4 rounded accent-primary" />
                 <span className="text-sm text-muted-foreground">I confirm all information provided is accurate and complete</span>
               </label>
-              <Button variant="amber" size="full" onClick={() => setStep(4)} disabled={!signed || !declared}>Save & Continue</Button>
+              <Button variant="amber" size="full" onClick={handleSubmit} disabled={loading || !signed || !declared}>
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Submit for Approval'}
+              </Button>
             </div>
           )}
 
-          {step === 4 && (
-            <div className="space-y-4">
-              <h2 className="text-xl font-bold text-foreground">Review & Submit</h2>
-              <div className="bg-card rounded-lg border p-4 space-y-3 card-shadow">
-                <h3 className="text-sm font-semibold text-foreground">Personal Details</h3>
-                <div className="text-sm text-muted-foreground space-y-1">
-                  <p>{personalForm.fullName || 'James Mwangi'}</p>
-                  <p>{personalForm.phone || '+254 712 345 678'}</p>
-                  <p>{personalForm.address || 'Westlands, Nairobi'}</p>
-                </div>
-                <div className="flex items-center gap-2 text-sm">
-                  <CheckCircle2 className="w-4 h-4 text-success" />
-                  <span className="text-success">ID Document uploaded</span>
-                </div>
-              </div>
-              <div className="bg-card rounded-lg border p-4 space-y-3 card-shadow">
-                <h3 className="text-sm font-semibold text-foreground">Vehicles ({vehicles.length})</h3>
-                {vehicles.map((v, i) => (
-                  <div key={i} className="text-sm text-muted-foreground">
-                    <p className="font-mono font-medium text-foreground">{v.registration || `Vehicle ${i + 1}`}</p>
-                    <p>{v.make} {v.model} {v.year}</p>
-                  </div>
-                ))}
-              </div>
-              <div className="bg-card rounded-lg border p-4 card-shadow">
-                <div className="flex items-center gap-2 text-sm">
-                  <CheckCircle2 className="w-4 h-4 text-success" />
-                  <span className="text-success">Agreement signed</span>
-                </div>
-              </div>
-              <Button variant="amber" size="full" onClick={handleSubmit}>Submit for Approval</Button>
-            </div>
-          )}
         </div>
       </div>
     </div>

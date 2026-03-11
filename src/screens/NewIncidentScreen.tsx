@@ -1,29 +1,84 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
-import { mockVehicles, incidentTypeOptions } from '@/lib/mockData';
+import { vehicles, incidents } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ArrowLeft, MapPin, Car, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, MapPin, Car, CheckCircle2, Loader2 } from 'lucide-react';
+
+const incidentTypeOptions = [
+  { id: 'regular_service', label: 'Regular Service', description: 'Scheduled maintenance', icon: '🔧' },
+  { id: 'roadside_assistance', label: 'Roadside Assistance', description: 'Jump start, flat tire, lockout', icon: '🚗' },
+  { id: 'towing', label: 'Towing', description: 'Vehicle breakdown recovery', icon: '🚜' },
+  { id: 'mechanical_diagnosis', label: 'Mechanical Diagnosis', description: 'Check engine, diagnostics', icon: '⚙️' },
+  { id: 'spares_request', label: 'Spares Request', description: 'Request replacement parts', icon: '🔩' },
+];
 
 export default function NewIncidentScreen() {
   const { navigate } = useApp();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const [step, setStep] = useState(1);
+  
+  const [vehicleList, setVehicleList] = useState<any[]>([]);
   const [selectedVehicle, setSelectedVehicle] = useState('');
   const [selectedType, setSelectedType] = useState('');
   const [description, setDescription] = useState('');
   const [location, setLocation] = useState('');
   const [mileage, setMileage] = useState('');
+  
   const [otp, setOtp] = useState('');
+  const [generatedOtp, setGeneratedOtp] = useState('');
+  const [claimCode, setClaimCode] = useState('');
   const [confirmed, setConfirmed] = useState(false);
 
-  const activeVehicles = mockVehicles.filter(v => v.status === 'active');
+  useEffect(() => { loadVehicles(); }, []);
 
-  const handleOtpChange = (val: string) => {
-    const cleaned = val.replace(/\D/g, '').slice(0, 6);
-    setOtp(cleaned);
-    if (cleaned.length === 6) {
-      setTimeout(() => setConfirmed(true), 800);
+  const loadVehicles = async () => {
+    try {
+      const { data } = await vehicles.list();
+      const active = data?.filter((v: any) => v.status === 'approved') || [];
+      setVehicleList(active);
+    } catch (e) {
+      console.error('Failed to load vehicles:', e);
     }
+  };
+
+  const handleStart = () => {
+    if (!selectedVehicle || !selectedType || !description || !location) {
+      setError('Please fill all required fields');
+      return;
+    }
+    setError('');
+    // Generate OTP
+    const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
+    setGeneratedOtp(newOtp);
+    console.log('OTP:', newOtp); // For testing
+    setStep(4);
+  };
+
+  const handleVerify = async () => {
+    if (!otp || otp !== generatedOtp) {
+      setError('Invalid OTP');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      const { data, error: e } = await incidents.create({
+        vehicle_id: selectedVehicle,
+        type: selectedType,
+        description,
+        location,
+        mileage: mileage ? Number(mileage) : undefined,
+        otp,
+      });
+      if (e) throw e;
+      setClaimCode(data.claim_code);
+      setConfirmed(true);
+    } catch (e: any) {
+      setError(e.message || 'Failed to create incident');
+    }
+    setLoading(false);
   };
 
   if (confirmed) {
@@ -35,7 +90,7 @@ export default function NewIncidentScreen() {
         <h1 className="text-2xl font-bold text-foreground mb-2 text-center">Incident Created Successfully</h1>
         <p className="text-sm text-muted-foreground text-center mb-4">Save this reference number — share it with our team</p>
         <div className="bg-primary/10 rounded-xl px-6 py-3 mb-6">
-          <span className="font-mono text-xl font-bold text-primary">TIN-2025-00847</span>
+          <span className="font-mono text-xl font-bold text-primary">{claimCode}</span>
         </div>
         <div className="w-full max-w-xs space-y-3">
           <Button variant="amber" size="full" onClick={() => navigate('incident-detail')}>View Incident</Button>
@@ -54,6 +109,11 @@ export default function NewIncidentScreen() {
         <h1 className="text-lg font-semibold text-foreground">New Incident</h1>
       </div>
 
+      {/* Error */}
+      {error && (
+        <div className="mx-6 mb-4 p-3 bg-red-50 text-red-600 rounded-lg text-sm">{error}</div>
+      )}
+
       {/* Progress */}
       <div className="px-6 pb-4">
         <div className="flex gap-2">
@@ -65,11 +125,20 @@ export default function NewIncidentScreen() {
 
       <div className="flex-1 px-6 pb-8 overflow-y-auto">
         <div className="max-w-md mx-auto animate-fade-in">
+          
+          {/* Step 1: Select Vehicle */}
           {step === 1 && (
             <div className="space-y-3">
               <h2 className="text-xl font-bold text-foreground mb-1">Select Vehicle</h2>
               <p className="text-sm text-muted-foreground mb-4">Which vehicle needs service?</p>
-              {activeVehicles.map((v) => (
+              
+              {vehicleList.length === 0 && (
+                <div className="p-4 bg-yellow-50 text-yellow-700 rounded-lg text-sm">
+                  No approved vehicles. Complete onboarding first.
+                </div>
+              )}
+              
+              {vehicleList.map((v) => (
                 <button
                   key={v.id}
                   onClick={() => { setSelectedVehicle(v.id); setStep(2); }}
@@ -89,6 +158,7 @@ export default function NewIncidentScreen() {
             </div>
           )}
 
+          {/* Step 2: Incident Type */}
           {step === 2 && (
             <div className="space-y-3">
               <h2 className="text-xl font-bold text-foreground mb-1">Incident Type</h2>
@@ -109,11 +179,12 @@ export default function NewIncidentScreen() {
             </div>
           )}
 
+          {/* Step 3: Description */}
           {step === 3 && (
             <div className="space-y-4">
               <h2 className="text-xl font-bold text-foreground">Describe the Issue</h2>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium text-foreground">What happened?</label>
+                <label className="text-sm font-medium text-foreground">What happened? *</label>
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
@@ -122,7 +193,7 @@ export default function NewIncidentScreen() {
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium text-foreground">Current Location</label>
+                <label className="text-sm font-medium text-foreground">Current Location *</label>
                 <div className="relative">
                   <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g. Thika Road, Nairobi" className="h-12 pr-20" />
                   <button className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 text-xs text-primary font-medium">
@@ -134,17 +205,24 @@ export default function NewIncidentScreen() {
                 <label className="text-sm font-medium text-foreground">Current Mileage <span className="text-muted-foreground">(optional)</span></label>
                 <Input type="number" value={mileage} onChange={(e) => setMileage(e.target.value)} placeholder="e.g. 67500" className="h-12" />
               </div>
-              <Button variant="amber" size="full" onClick={() => setStep(4)}>Continue</Button>
+              <Button variant="amber" size="full" onClick={handleStart}>Continue</Button>
             </div>
           )}
 
+          {/* Step 4: OTP */}
           {step === 4 && (
             <div className="flex flex-col items-center text-center pt-8">
               <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-6">
                 <span className="text-3xl">🔐</span>
               </div>
               <h2 className="text-xl font-bold text-foreground mb-2">Verify Your Identity</h2>
-              <p className="text-sm text-muted-foreground mb-8">We sent a 6-digit code to +254 7XX XXX XXX</p>
+              <p className="text-sm text-muted-foreground mb-4">We sent a 6-digit code to your phone</p>
+              
+              {/* Debug: Show OTP */}
+              <div className="mb-4 p-2 bg-gray-100 rounded text-xs">
+                Test OTP: <strong>{generatedOtp}</strong>
+              </div>
+              
               <div className="flex justify-center gap-2 mb-6">
                 {Array.from({ length: 6 }).map((_, i) => (
                   <div
@@ -157,14 +235,18 @@ export default function NewIncidentScreen() {
                   </div>
                 ))}
               </div>
+              
               <input
                 type="tel"
                 value={otp}
-                onChange={(e) => handleOtpChange(e.target.value)}
+                onChange={(e) => {
+                  const cleaned = e.target.value.replace(/\D/g, '').slice(0, 6);
+                  setOtp(cleaned);
+                }}
                 className="absolute opacity-0 pointer-events-none"
                 autoFocus
               />
-              {/* Tap target for OTP */}
+              
               <button
                 onClick={() => {
                   const inp = document.querySelector('input[type="tel"]') as HTMLInputElement;
@@ -174,7 +256,15 @@ export default function NewIncidentScreen() {
               >
                 Tap here to enter code
               </button>
-              {otp.length < 6 && <p className="text-xs text-muted-foreground">Resend OTP in 30 seconds</p>}
+              
+              <Button 
+                variant="amber" 
+                size="full" 
+                onClick={handleVerify} 
+                disabled={loading || otp.length !== 6}
+              >
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Verify & Create Incident'}
+              </Button>
             </div>
           )}
         </div>
