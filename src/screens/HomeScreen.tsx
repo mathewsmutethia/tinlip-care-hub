@@ -5,7 +5,9 @@ import { Zap, Car, CreditCard, ClipboardList, ChevronRight, Shield } from 'lucid
 import { Button } from '@/components/ui/button';
 
 export default function HomeScreen() {
-  const { navigate, selectIncident, selectVehicle } = useApp();
+  const { navigate, selectIncident, selectVehicle, profile, user } = useApp();
+  const displayName = profile?.name?.split(' ')[0] || user?.email?.split('@')[0] || 'there';
+  const initials = (profile?.name || user?.email || 'U').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
   const daysRemaining = getDaysRemaining(mockUser.coverageEnd);
   const activeIncident = mockIncidents.find(i => i.status !== 'closed');
 
