@@ -17,7 +17,7 @@ export default function HomeScreen() {
       <div className="px-4 pt-6 pb-4 md:px-0">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">{getGreeting()}, James 👋</h1>
+            <h1 className="text-2xl font-bold text-foreground">{getGreeting()}, {displayName} 👋</h1>
             <p className="text-sm text-muted-foreground mt-0.5">Let's keep your vehicles protected</p>
           </div>
           <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-bold text-sm">
