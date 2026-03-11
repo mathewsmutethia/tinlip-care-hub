@@ -21,7 +21,7 @@ export default function HomeScreen() {
             <p className="text-sm text-muted-foreground mt-0.5">Let's keep your vehicles protected</p>
           </div>
           <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-bold text-sm">
-            JM
+            {initials}
           </div>
         </div>
       </div>
