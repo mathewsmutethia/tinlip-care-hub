@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
-import { vehicles, incidents, otpService, clientProfile } from '@/lib/supabase';
+import { vehicles, incidentService } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ArrowLeft, MapPin, Car, CheckCircle2, Loader2 } from 'lucide-react';
@@ -27,7 +27,8 @@ export default function NewIncidentScreen() {
   const [mileage, setMileage] = useState('');
   
   const [otp, setOtp] = useState('');
-  const [generatedOtp, setGeneratedOtp] = useState('');
+  const [otpToken, setOtpToken] = useState('');
+  const [otpMessage, setOtpMessage] = useState('');
   const [claimCode, setClaimCode] = useState('');
   const [confirmed, setConfirmed] = useState(false);
 
@@ -49,40 +50,37 @@ export default function NewIncidentScreen() {
       return;
     }
     setError('');
+    setLoading(true);
     
-    // Generate OTP
-    const newOtp = otpService.generate();
-    setGeneratedOtp(newOtp);
-    
-    // Get user's phone number
-    const { data: profile } = await clientProfile.get();
-    
-    // Send OTP via SMS (placeholder)
-    if (profile?.phone) {
-      await otpService.send(profile.phone, newOtp);
+    try {
+      const result = await incidentService.requestOtp();
+      setOtpToken(result.otp_token);
+      setOtpMessage(result.message);
+      setStep(4);
+    } catch (e: any) {
+      setError(e.message || 'Failed to request OTP');
     }
-    
-    setStep(4);
+    setLoading(false);
   };
 
   const handleVerify = async () => {
-    if (!otp || otp !== generatedOtp) {
-      setError('Invalid OTP');
+    if (otp.length !== 6) {
+      setError('Please enter the 6-digit code');
       return;
     }
     setLoading(true);
     setError('');
     try {
-      const { data, error: e } = await incidents.create({
+      const result = await incidentService.verifyAndCreate({
+        otp_token: otpToken,
+        otp_code: otp,
         vehicle_id: selectedVehicle,
         type: selectedType,
         description,
         location,
         mileage: mileage ? Number(mileage) : undefined,
-        otp,
       });
-      if (e) throw e;
-      setClaimCode(data.claim_code);
+      setClaimCode(result.claim_code);
       setConfirmed(true);
     } catch (e: any) {
       setError(e.message || 'Failed to create incident');
@@ -118,12 +116,10 @@ export default function NewIncidentScreen() {
         <h1 className="text-lg font-semibold text-foreground">New Incident</h1>
       </div>
 
-      {/* Error */}
       {error && (
         <div className="mx-6 mb-4 p-3 bg-red-50 text-red-600 rounded-lg text-sm">{error}</div>
       )}
 
-      {/* Progress */}
       <div className="px-6 pb-4">
         <div className="flex gap-2">
           {[1, 2, 3, 4].map(s => (
@@ -135,7 +131,6 @@ export default function NewIncidentScreen() {
       <div className="flex-1 px-6 pb-8 overflow-y-auto">
         <div className="max-w-md mx-auto animate-fade-in">
           
-          {/* Step 1: Select Vehicle */}
           {step === 1 && (
             <div className="space-y-3">
               <h2 className="text-xl font-bold text-foreground mb-1">Select Vehicle</h2>
@@ -167,7 +162,6 @@ export default function NewIncidentScreen() {
             </div>
           )}
 
-          {/* Step 2: Incident Type */}
           {step === 2 && (
             <div className="space-y-3">
               <h2 className="text-xl font-bold text-foreground mb-1">Incident Type</h2>
@@ -188,7 +182,6 @@ export default function NewIncidentScreen() {
             </div>
           )}
 
-          {/* Step 3: Description */}
           {step === 3 && (
             <div className="space-y-4">
               <h2 className="text-xl font-bold text-foreground">Describe the Issue</h2>
@@ -214,18 +207,19 @@ export default function NewIncidentScreen() {
                 <label className="text-sm font-medium text-foreground">Current Mileage <span className="text-muted-foreground">(optional)</span></label>
                 <Input type="number" value={mileage} onChange={(e) => setMileage(e.target.value)} placeholder="e.g. 67500" className="h-12" />
               </div>
-              <Button variant="amber" size="full" onClick={handleStart}>Continue</Button>
+              <Button variant="amber" size="full" onClick={handleStart} disabled={loading}>
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Continue'}
+              </Button>
             </div>
           )}
 
-          {/* Step 4: OTP */}
           {step === 4 && (
             <div className="flex flex-col items-center text-center pt-8">
               <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-6">
                 <span className="text-3xl">🔐</span>
               </div>
               <h2 className="text-xl font-bold text-foreground mb-2">Verify Your Identity</h2>
-              <p className="text-sm text-muted-foreground mb-8">Enter the 6-digit code sent to your phone</p>
+              <p className="text-sm text-muted-foreground mb-8">{otpMessage || 'Enter the 6-digit code sent to your phone'}</p>
               
               <div className="flex justify-center gap-2 mb-6">
                 {Array.from({ length: 6 }).map((_, i) => (
