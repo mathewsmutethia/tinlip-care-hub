@@ -102,32 +102,38 @@ export const quotes = {
 };
 
 // ============================================
-// OTP SERVICE
+// OTP & INCIDENT SERVICE (Server-side via Edge Function)
 // ============================================
-export const otpService = {
-  generate: () => Math.floor(100000 + Math.random() * 900000).toString(),
-  
-  // TODO: Integrate with SMS provider (Africa's Talking, Twilio)
-  send: async (phone: string, otp: string) => {
-    // TODO: Send OTP via SMS provider (Africa's Talking, Twilio)
-    return { success: true };
-  }
+export const incidentService = {
+  requestOtp: async () => {
+    const { data, error } = await supabase.functions.invoke('create-incident', {
+      body: { action: 'request_otp' },
+    });
+    if (error) throw error;
+    return data as { success: boolean; otp_token: string; message: string; dev_otp?: string };
+  },
+
+  verifyAndCreate: async (params: {
+    otp_token: string;
+    otp_code: string;
+    vehicle_id: string;
+    type: string;
+    description: string;
+    location: string;
+    mileage?: number;
+  }) => {
+    const { data, error } = await supabase.functions.invoke('create-incident', {
+      body: { action: 'verify_and_create', ...params },
+    });
+    if (error) throw error;
+    return data as { success: boolean; claim_code: string; incident_id: string };
+  },
 };
 
 // ============================================
-// INCIDENTS
+// INCIDENTS (read-only client operations)
 // ============================================
 export const incidents = {
-  create: async (data: { vehicle_id: string; type: string; description: string; location: string; mileage?: number; otp: string }) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    const claimCode = `TLP-${Date.now().toString(36).toUpperCase()}`;
-    return supabase.from('incidents').insert({
-      client_id: user?.id,
-      ...data,
-      claim_code: claimCode,
-      status: 'open'
-    }).select().single();
-  },
   
   list: async () => {
     const { data: { user } } = await supabase.auth.getUser();
