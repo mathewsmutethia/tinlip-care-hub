@@ -175,23 +175,7 @@ export const documents = {
 };
 
 // ============================================
-// ADMIN
+// ADMIN — Removed from client bundle for security.
+// Admin operations must be performed via Edge Functions
+// with server-side role verification.
 // ============================================
-export const admin = {
-  getPendingClients: () => 
-    supabase.from('clients').select('*, vehicles(*)').eq('status', 'pending_approval'),
-  
-  approveClient: (id: string) => 
-    supabase.from('clients').update({ status: 'approved_payment_pending' }).eq('id', id),
-  
-  rejectClient: (id: string, reason: string) => 
-    supabase.from('clients').update({ status: 'rejected' }).eq('id', id),
-  
-  approveVehicle: (id: string) => 
-    supabase.from('vehicles').update({ status: 'approved' }).eq('id', id),
-  
-  getAllIncidents: () => 
-    supabase.from('incidents')
-      .select('*, clients(name, email, phone), vehicles(registration, make, model)')
-      .order('created_at', { ascending: false })
-};
