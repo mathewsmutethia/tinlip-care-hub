@@ -3,7 +3,7 @@
 // ============================================
 
 import { useState, useEffect } from 'react';
-import { vehicles, incidents } from '../lib/supabase';
+import { vehicles, incidentService } from '../lib/supabase';
 
 export default function IncidentCreate() {
   const [step, setStep] = useState(1);
@@ -11,13 +11,13 @@ export default function IncidentCreate() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [otp, setOtp] = useState('');
+  const [otpToken, setOtpToken] = useState('');
   const [vehicleList, setVehicleList] = useState<any[]>([]);
   const [selectedVehicle, setSelectedVehicle] = useState('');
   const [incidentType, setIncidentType] = useState('');
   const [description, setDescription] = useState('');
   const [location, setLocation] = useState('');
   const [mileage, setMileage] = useState(0);
-  const [generatedOtp, setGeneratedOtp] = useState('');
 
   const incidentTypes = [
     { value: 'regular_service', label: 'Regular Service' },
@@ -35,38 +35,44 @@ export default function IncidentCreate() {
     setVehicleList(approved);
   };
 
-  const handleStart = () => {
+  const handleStart = async () => {
     if (!selectedVehicle || !incidentType || !description || !location) {
       setError('Please fill all fields');
       return;
     }
     setError('');
-    const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
-    setGeneratedOtp(newOtp);
+    setLoading(true);
     
-    setStep(2);
+    try {
+      const result = await incidentService.requestOtp();
+      setOtpToken(result.otp_token);
+      setStep(2);
+    } catch (e: any) {
+      setError(e.message || 'Failed to request OTP');
+    }
+    setLoading(false);
   };
 
   const handleVerifyOtp = async () => {
-    if (!otp || otp !== generatedOtp) {
-      setError('Invalid OTP');
+    if (!otp || otp.length !== 6) {
+      setError('Please enter the 6-digit code');
       return;
     }
     setLoading(true);
     try {
-      const { data, error: e } = await incidents.create({
+      const result = await incidentService.verifyAndCreate({
+        otp_token: otpToken,
+        otp_code: otp,
         vehicle_id: selectedVehicle,
         type: incidentType,
         description,
         location,
-        mileage,
-        otp,
+        mileage: mileage || undefined,
       });
-      if (e) throw e;
-      setSuccess(`Incident created! Claim code: ${data.claim_code}`);
+      setSuccess(`Incident created! Claim code: ${result.claim_code}`);
       setStep(3);
     } catch (e: any) {
-      setError(e.message);
+      setError(e.message || 'Verification failed');
     }
     setLoading(false);
   };
@@ -133,8 +139,8 @@ export default function IncidentCreate() {
             className="w-full p-3 border rounded-lg"
           />
 
-          <button onClick={handleStart} className="w-full py-3 bg-blue-600 text-white rounded-lg">
-            Continue
+          <button onClick={handleStart} disabled={loading} className="w-full py-3 bg-blue-600 text-white rounded-lg disabled:opacity-50">
+            {loading ? 'Requesting OTP...' : 'Continue'}
           </button>
         </div>
       )}
@@ -146,7 +152,7 @@ export default function IncidentCreate() {
           <input
             type="text"
             value={otp}
-            onChange={e => setOtp(e.target.value)}
+            onChange={e => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
             className="w-full p-3 border rounded-lg text-center text-2xl tracking-widest"
             placeholder="000000"
             maxLength={6}
@@ -167,7 +173,7 @@ export default function IncidentCreate() {
           <div className="text-5xl">✅</div>
           <h2 className="text-xl font-bold">Incident Created!</h2>
           <button
-            onClick={() => { setStep(1); setSuccess(''); setOtp(''); }}
+            onClick={() => { setStep(1); setSuccess(''); setOtp(''); setOtpToken(''); }}
             className="w-full py-3 bg-blue-600 text-white rounded-lg"
           >
             Start Another
