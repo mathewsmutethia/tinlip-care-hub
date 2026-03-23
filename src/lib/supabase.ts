@@ -156,21 +156,30 @@ export const incidents = {
 export const documents = {
   upload: async (file: File, folder: string) => {
     const { data: { user } } = await supabase.auth.getUser();
-    const path = `${user?.id}/${folder}/${Date.now()}_${file.name}`;
-    const { data, error } = await supabase.storage.from('documents').upload(path, file);
+    if (!user) throw new Error('Not authenticated');
+    const path = `${user.id}/${folder}/${Date.now()}_${file.name}`;
+    const { error } = await supabase.storage.from('documents').upload(path, file);
     if (error) throw error;
-    return supabase.storage.from('documents').getPublicUrl(path).data.publicUrl;
+    // Store the path only — use getSignedUrl at display time
+    return path;
+  },
+
+  getSignedUrl: async (path: string) => {
+    const { data, error } = await supabase.storage.from('documents').createSignedUrl(path, 60);
+    if (error) throw error;
+    return data.signedUrl;
   },
   
   uploadVehicleDoc: async (vehicleId: string, type: 'logbook' | 'insurance', file: File) => {
-    const url = await documents.upload(file, vehicleId);
-    return supabase.from('vehicles').update({ [`${type}_url`]: url }).eq('id', vehicleId).select().single();
+    const path = await documents.upload(file, vehicleId);
+    return supabase.from('vehicles').update({ [`${type}_url`]: path }).eq('id', vehicleId).select().single();
   },
   
   uploadClientId: async (file: File) => {
     const { data: { user } } = await supabase.auth.getUser();
-    const url = await documents.upload(file, 'id');
-    return supabase.from('clients').update({ id_document_url: url }).eq('id', user?.id).select().single();
+    if (!user) throw new Error('Not authenticated');
+    const path = await documents.upload(file, 'id');
+    return supabase.from('clients').update({ id_document_url: path }).eq('id', user.id).select().single();
   }
 };
 
