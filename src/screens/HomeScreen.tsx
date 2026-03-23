@@ -1,15 +1,41 @@
 import { useApp } from '@/context/AppContext';
-import { mockUser, mockVehicles, mockIncidents, mockPayments, getGreeting, getDaysRemaining, formatKES } from '@/lib/mockData';
+import { mockIncidents, getGreeting, formatKES } from '@/lib/mockData';
+import { vehicles, incidents, clientProfile } from '@/lib/supabase';
 import StatusBadge from '@/components/StatusBadge';
-import { Zap, Car, CreditCard, ClipboardList, ChevronRight, Shield } from 'lucide-react';
+import { Zap, Car, CreditCard, ClipboardList, ChevronRight, Shield, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useEffect, useState } from 'react';
 
 export default function HomeScreen() {
   const { navigate, selectIncident, selectVehicle, profile, user } = useApp();
+  const [vehicleCount, setVehicleCount] = useState(0);
+  const [incidentCount, setIncidentCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+
   const displayName = profile?.name?.split(' ')[0] || user?.email?.split('@')[0] || 'there';
-  const initials = (profile?.name || user?.email || 'U').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-  const daysRemaining = getDaysRemaining(mockUser.coverageEnd);
+  const initials = (profile?.name || user?.email || 'U').split(' ').map(n => n[0] || '').join('').toUpperCase().slice(0, 2) || 'U';
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  async function loadData() {
+    try {
+      const [vehiclesRes, incidentsRes] = await Promise.all([
+        vehicles.list(),
+        incidents.list()
+      ]);
+      setVehicleCount(vehiclesRes.data?.length || 0);
+      setIncidentCount(incidentsRes.data?.length || 0);
+    } catch (err) {
+      console.error('Error loading data:', err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   const activeIncident = mockIncidents.find(i => i.status !== 'closed');
+  const hasActiveCoverage = profile?.status === 'active';
 
   return (
     <div className="pb-20 md:pb-4 animate-fade-in">
@@ -28,12 +54,20 @@ export default function HomeScreen() {
 
       {/* Coverage banner */}
       <div className="px-4 mb-4 md:px-0">
-        {mockUser.coverageStatus === 'active' && (
+        {hasActiveCoverage ? (
           <div className="bg-success/10 border border-success/20 rounded-xl p-4 flex items-center gap-3">
             <Shield className="w-5 h-5 text-success flex-shrink-0" />
             <div className="flex-1">
               <p className="text-sm font-semibold text-success">Coverage Active</p>
-              <p className="text-xs text-success/80">Expires {mockUser.coverageEnd}</p>
+              <p className="text-xs text-success/80">Your vehicles are protected</p>
+            </div>
+          </div>
+        ) : (
+          <div className="bg-amber/10 border border-amber/20 rounded-xl p-4 flex items-center gap-3">
+            <Shield className="w-5 h-5 text-amber flex-shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-amber">Complete setup to activate coverage</p>
+              <p className="text-xs text-amber/80">Add vehicles to get started</p>
             </div>
           </div>
         )}
@@ -55,6 +89,20 @@ export default function HomeScreen() {
               <span className="text-[11px] font-medium text-foreground text-center whitespace-pre-line leading-tight">{item.label}</span>
             </button>
           ))}
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div className="px-4 mb-6 md:px-0">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-card border rounded-xl p-4">
+            <p className="text-sm text-muted-foreground">Registered Vehicles</p>
+            <p className="text-2xl font-bold text-foreground">{loading ? <Loader2 className="w-5 h-5 animate-spin" /> : vehicleCount}</p>
+          </div>
+          <div className="bg-card border rounded-xl p-4">
+            <p className="text-sm text-muted-foreground">Total Incidents</p>
+            <p className="text-2xl font-bold text-foreground">{loading ? <Loader2 className="w-5 h-5 animate-spin" /> : incidentCount}</p>
+          </div>
         </div>
       </div>
 
@@ -80,49 +128,17 @@ export default function HomeScreen() {
       )}
 
       {/* Recent Activity */}
-      <div className="px-4 mb-6 md:px-0">
-        <h2 className="text-sm font-semibold text-foreground mb-3">Recent Activity</h2>
-        <div className="space-y-2">
-          {mockIncidents.slice(0, 3).map((incident) => (
-            <button
-              key={incident.id}
-              onClick={() => { selectIncident(incident.id); navigate('incident-detail'); }}
-              className="w-full bg-card border rounded-xl p-3 card-shadow text-left flex items-center gap-3 hover:shadow-md transition-shadow"
-            >
-              <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${incident.status === 'closed' ? 'bg-muted' : 'bg-primary/10'}`}>
-                <Zap className={`w-4 h-4 ${incident.status === 'closed' ? 'text-muted-foreground' : 'text-primary'}`} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-foreground truncate">{incident.typeLabel}</p>
-                <p className="text-xs text-muted-foreground">{incident.vehicleReg} · {incident.createdAt}</p>
-              </div>
-              <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Coverage Summary */}
       <div className="px-4 md:px-0">
-        <h2 className="text-sm font-semibold text-foreground mb-3">Coverage Summary</h2>
-        <div className="bg-card border rounded-xl p-4 card-shadow">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <p className="text-xs text-muted-foreground">Coverage Period</p>
-              <p className="text-sm font-medium text-foreground">{mockUser.coverageStart} — {mockUser.coverageEnd}</p>
+        <h2 className="text-sm font-semibold text-foreground mb-3">Recent Activity</h2>
+        <div className="bg-card border rounded-xl p-4">
+          {loading ? (
+            <div className="flex items-center justify-center py-4">
+              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
             </div>
-          </div>
-          <div className="mb-2">
-            <div className="flex items-center justify-between text-xs mb-1">
-              <span className="text-muted-foreground">{daysRemaining} days remaining</span>
-              <span className="text-muted-foreground">{Math.round((daysRemaining / 365) * 100)}%</span>
-            </div>
-            <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
-              <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${(daysRemaining / 365) * 100}%` }} />
-            </div>
-          </div>
-          {daysRemaining <= 30 && (
-            <Button variant="amber" size="sm" className="mt-2" onClick={() => navigate('coverage')}>Renew Now</Button>
+          ) : vehicleCount === 0 && incidentCount === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">No recent activity. Add your first vehicle to get started!</p>
+          ) : (
+            <p className="text-sm text-muted-foreground">You have {vehicleCount} vehicle(s) and {incidentCount} incident(s) on record.</p>
           )}
         </div>
       </div>
