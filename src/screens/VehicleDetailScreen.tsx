@@ -1,15 +1,37 @@
+import { useEffect, useState } from 'react';
 import { useApp } from '@/context/AppContext';
-import { mockVehicles, mockIncidents } from '@/lib/mockData';
+import { supabase } from '@/integrations/supabase/client';
 import StatusBadge from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Car, FileText, CheckCircle2, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Car, FileText, CheckCircle2, ChevronRight, Loader2 } from 'lucide-react';
 
 export default function VehicleDetailScreen() {
   const { navigate, selectedVehicleId, selectIncident } = useApp();
-  const vehicle = mockVehicles.find(v => v.id === selectedVehicleId);
-  if (!vehicle) return null;
+  const [vehicle, setVehicle] = useState<any>(null);
+  const [vehicleIncidents, setVehicleIncidents] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const vehicleIncidents = mockIncidents.filter(i => i.vehicleId === vehicle.id);
+  useEffect(() => {
+    if (!selectedVehicleId) return;
+    Promise.all([
+      supabase.from('vehicles').select('*').eq('id', selectedVehicleId).single(),
+      supabase.from('incidents').select('*').eq('vehicle_id', selectedVehicleId).order('created_at', { ascending: false }),
+    ]).then(([vehicleRes, incidentsRes]) => {
+      setVehicle(vehicleRes.data);
+      setVehicleIncidents(incidentsRes.data ?? []);
+      setLoading(false);
+    });
+  }, [selectedVehicleId]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[50vh]">
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!vehicle) return null;
 
   return (
     <div className="pb-20 md:pb-4 animate-fade-in">
@@ -27,17 +49,20 @@ export default function VehicleDetailScreen() {
             </div>
             <div>
               <p className="font-mono text-lg font-bold text-foreground">{vehicle.registration}</p>
-              <StatusBadge status={vehicle.status === 'active' ? 'Active' : 'Inactive'} variant={vehicle.status === 'active' ? 'active' : 'inactive'} />
+              <StatusBadge
+                status={vehicle.status === 'active' ? 'Active' : vehicle.status === 'pending' ? 'Pending' : 'Inactive'}
+                variant={vehicle.status === 'active' ? 'active' : vehicle.status === 'pending' ? 'warning' : 'inactive'}
+              />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3 text-sm">
             {[
-              ['Make', vehicle.make],
-              ['Model', vehicle.model],
-              ['Year', vehicle.year],
-              ['Mileage', `${vehicle.mileage.toLocaleString()} km`],
-              ['Engine No.', vehicle.engineNumber],
-              ['Chassis No.', vehicle.chassisNumber],
+              ['Make', vehicle.make ?? '—'],
+              ['Model', vehicle.model ?? '—'],
+              ['Year', vehicle.year ?? '—'],
+              ['Mileage', vehicle.mileage != null ? `${vehicle.mileage.toLocaleString()} km` : '—'],
+              ['Engine No.', vehicle.engine_number ?? '—'],
+              ['Chassis No.', vehicle.chassis_number ?? '—'],
             ].map(([label, val]) => (
               <div key={label as string}>
                 <p className="text-xs text-muted-foreground">{label}</p>
@@ -52,8 +77,8 @@ export default function VehicleDetailScreen() {
           <h3 className="text-sm font-semibold text-foreground mb-3">Documents</h3>
           <div className="space-y-2">
             {[
-              { label: 'Logbook', uploaded: vehicle.logbookUploaded },
-              { label: 'Insurance Certificate', uploaded: vehicle.insuranceUploaded },
+              { label: 'Logbook', uploaded: !!vehicle.logbook_url },
+              { label: 'Insurance Certificate', uploaded: !!vehicle.insurance_url },
             ].map((doc) => (
               <div key={doc.label} className="flex items-center justify-between p-3 rounded-lg bg-secondary/50">
                 <div className="flex items-center gap-2">
@@ -80,8 +105,10 @@ export default function VehicleDetailScreen() {
                   className="w-full flex items-center justify-between p-3 rounded-lg bg-secondary/50 text-left hover:bg-secondary transition-colors"
                 >
                   <div>
-                    <p className="font-mono text-sm font-medium text-foreground">{inc.claimRef}</p>
-                    <p className="text-xs text-muted-foreground">{inc.typeLabel} · {inc.createdAt}</p>
+                    <p className="font-mono text-sm font-medium text-foreground">{inc.claim_code}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {inc.type} · {new Date(inc.created_at).toLocaleDateString('en-KE')}
+                    </p>
                   </div>
                   <ChevronRight className="w-4 h-4 text-muted-foreground" />
                 </button>

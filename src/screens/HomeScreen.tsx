@@ -1,15 +1,15 @@
 import { useApp } from '@/context/AppContext';
-import { mockIncidents, getGreeting, formatKES } from '@/lib/mockData';
-import { vehicles, incidents, clientProfile } from '@/lib/supabase';
+import { getGreeting } from '@/lib/mockData';
+import { vehicles, incidents } from '@/lib/supabase';
 import StatusBadge from '@/components/StatusBadge';
 import { Zap, Car, CreditCard, ClipboardList, ChevronRight, Shield, Loader2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { useEffect, useState } from 'react';
 
 export default function HomeScreen() {
-  const { navigate, selectIncident, selectVehicle, profile, user } = useApp();
+  const { navigate, selectIncident, profile, user } = useApp();
   const [vehicleCount, setVehicleCount] = useState(0);
   const [incidentCount, setIncidentCount] = useState(0);
+  const [activeIncident, setActiveIncident] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   const displayName = profile?.name?.split(' ')[0] || user?.email?.split('@')[0] || 'there';
@@ -27,6 +27,8 @@ export default function HomeScreen() {
       ]);
       setVehicleCount(vehiclesRes.data?.length || 0);
       setIncidentCount(incidentsRes.data?.length || 0);
+      const active = (incidentsRes.data ?? []).find((i: any) => i.status !== 'closed');
+      setActiveIncident(active || null);
     } catch (err) {
       console.error('Error loading data:', err);
     } finally {
@@ -34,7 +36,6 @@ export default function HomeScreen() {
     }
   }
 
-  const activeIncident = mockIncidents.find(i => i.status !== 'closed');
   const hasActiveCoverage = profile?.status === 'active';
 
   return (
@@ -107,7 +108,7 @@ export default function HomeScreen() {
       </div>
 
       {/* Active Incident */}
-      {activeIncident && (
+      {!loading && activeIncident && (
         <div className="px-4 mb-6 md:px-0">
           <h2 className="text-sm font-semibold text-foreground mb-3">Active Incident</h2>
           <button
@@ -115,12 +116,16 @@ export default function HomeScreen() {
             className="w-full bg-card border rounded-xl p-4 card-shadow text-left hover:shadow-md transition-shadow"
           >
             <div className="flex items-start justify-between mb-2">
-              <span className="font-mono text-sm font-bold text-foreground">{activeIncident.claimRef}</span>
-              <StatusBadge status={activeIncident.statusLabel} variant="warning" />
+              <span className="font-mono text-sm font-bold text-foreground">{activeIncident.claim_code}</span>
+              <StatusBadge status={activeIncident.status} variant="warning" />
             </div>
-            <p className="text-sm text-muted-foreground">{activeIncident.vehicleReg} · {activeIncident.typeLabel}</p>
+            <p className="text-sm text-muted-foreground">
+              {activeIncident.vehicles?.registration ?? '—'} · {activeIncident.type}
+            </p>
             <div className="flex items-center justify-between mt-3">
-              <span className="text-xs text-muted-foreground">{activeIncident.createdAt}</span>
+              <span className="text-xs text-muted-foreground">
+                {new Date(activeIncident.created_at).toLocaleDateString('en-KE')}
+              </span>
               <span className="text-xs font-medium text-primary flex items-center gap-1">View Details <ChevronRight className="w-3 h-3" /></span>
             </div>
           </button>

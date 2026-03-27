@@ -1,13 +1,61 @@
+import { useEffect, useState } from 'react';
 import { useApp } from '@/context/AppContext';
-import { mockIncidents } from '@/lib/mockData';
+import { supabase } from '@/integrations/supabase/client';
 import StatusBadge from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, MapPin, Clock, Car, MessageSquare } from 'lucide-react';
+import { ArrowLeft, MapPin, Clock, Car, Loader2 } from 'lucide-react';
+
+const STATUS_ORDER = ['open', 'in_progress', 'completed', 'closed'];
+
+const TIMELINE_LABELS: Record<string, string> = {
+  open: 'Reported',
+  in_progress: 'In Progress',
+  completed: 'Service Completed',
+  closed: 'Closed',
+};
+
+function buildTimeline(currentStatus: string) {
+  const currentIndex = STATUS_ORDER.indexOf(currentStatus);
+  return STATUS_ORDER.map((s, i) => ({
+    label: TIMELINE_LABELS[s],
+    completed: i <= currentIndex,
+  }));
+}
 
 export default function IncidentDetailScreen() {
   const { navigate, selectedIncidentId } = useApp();
-  const incident = mockIncidents.find(i => i.id === selectedIncidentId);
+  const [incident, setIncident] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!selectedIncidentId) return;
+    supabase
+      .from('incidents')
+      .select('*, vehicles(registration, make, model)')
+      .eq('id', selectedIncidentId)
+      .single()
+      .then(({ data }) => {
+        setIncident(data);
+        setLoading(false);
+      });
+  }, [selectedIncidentId]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[50vh]">
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
   if (!incident) return null;
+
+  const timeline = buildTimeline(incident.status);
+  const statusVariant =
+    incident.status === 'closed' ? 'inactive'
+    : incident.status === 'completed' ? 'success'
+    : incident.status === 'in_progress' ? 'warning'
+    : 'info';
 
   return (
     <div className="pb-20 md:pb-4 animate-fade-in">
@@ -20,64 +68,58 @@ export default function IncidentDetailScreen() {
         {/* Header */}
         <div className="bg-card border rounded-xl p-4 card-shadow">
           <div className="flex items-center justify-between mb-3">
-            <span className="font-mono text-lg font-bold text-foreground">{incident.claimRef}</span>
-            <StatusBadge
-              status={incident.statusLabel}
-              variant={incident.status === 'closed' ? 'inactive' : incident.status === 'in-progress' ? 'warning' : incident.status === 'completed' ? 'success' : 'info'}
-            />
+            <span className="font-mono text-lg font-bold text-foreground">{incident.claim_code}</span>
+            <StatusBadge status={incident.status} variant={statusVariant} />
           </div>
           <div className="space-y-2 text-sm">
             <div className="flex items-center gap-2 text-muted-foreground">
               <Car className="w-4 h-4" />
-              <span>{incident.vehicleReg} · {incident.vehicleName}</span>
+              <span>
+                {incident.vehicles?.registration ?? '—'}
+                {incident.vehicles?.make ? ` · ${incident.vehicles.make} ${incident.vehicles.model ?? ''}` : ''}
+              </span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="bg-secondary px-2 py-0.5 rounded-full text-xs font-medium text-foreground">{incident.typeLabel}</span>
+              <span className="bg-secondary px-2 py-0.5 rounded-full text-xs font-medium text-foreground">{incident.type}</span>
             </div>
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <MapPin className="w-4 h-4" />
-              <span>{incident.location}</span>
-            </div>
+            {incident.location && (
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <MapPin className="w-4 h-4" />
+                <span>{incident.location}</span>
+              </div>
+            )}
             <div className="flex items-center gap-2 text-muted-foreground">
               <Clock className="w-4 h-4" />
-              <span>{incident.createdAt}</span>
+              <span>{new Date(incident.created_at).toLocaleDateString('en-KE')}</span>
             </div>
           </div>
-          <div className="mt-3 pt-3 border-t">
-            <p className="text-sm text-foreground">{incident.description}</p>
-          </div>
+          {incident.description && (
+            <div className="mt-3 pt-3 border-t">
+              <p className="text-sm text-foreground">{incident.description}</p>
+            </div>
+          )}
         </div>
 
         {/* Timeline */}
         <div className="bg-card border rounded-xl p-4 card-shadow">
           <h3 className="text-sm font-semibold text-foreground mb-4">Status Timeline</h3>
           <div className="space-y-0">
-            {incident.timeline.map((step, i) => (
+            {timeline.map((step, i) => (
               <div key={i} className="flex gap-3">
                 <div className="flex flex-col items-center">
                   <div className={`w-3 h-3 rounded-full border-2 flex-shrink-0 ${step.completed ? 'bg-primary border-primary' : 'bg-card border-muted'}`} />
-                  {i < incident.timeline.length - 1 && (
+                  {i < timeline.length - 1 && (
                     <div className={`w-0.5 h-8 ${step.completed ? 'bg-primary' : 'bg-muted'}`} />
                   )}
                 </div>
                 <div className="pb-4 -mt-0.5">
                   <p className={`text-sm font-medium ${step.completed ? 'text-foreground' : 'text-muted-foreground'}`}>{step.label}</p>
-                  {step.timestamp && <p className="text-xs text-muted-foreground">{step.timestamp}</p>}
-                  {!step.completed && !step.timestamp && <p className="text-xs text-muted-foreground">Pending</p>}
+                  {!step.completed && <p className="text-xs text-muted-foreground">Pending</p>}
                 </div>
               </div>
             ))}
           </div>
         </div>
-
-        {/* Provider */}
-        {incident.providerName && (
-          <div className="bg-card border rounded-xl p-4 card-shadow">
-            <h3 className="text-sm font-semibold text-foreground mb-2">Assigned Provider</h3>
-            <p className="text-sm text-foreground font-medium">{incident.providerName}</p>
-            <p className="text-xs text-muted-foreground">{incident.providerType}</p>
-          </div>
-        )}
 
         {/* Feedback prompt */}
         {incident.status === 'completed' && (
