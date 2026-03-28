@@ -70,15 +70,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     // Set up auth listener FIRST
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       const currentUser = session?.user ?? null;
       setUser(currentUser);
       setIsAuthenticated(!!currentUser);
-      
+
       if (currentUser) {
         // Use setTimeout to avoid Supabase deadlock
         setTimeout(() => fetchProfile(currentUser.id), 0);
-        if (screen === 'welcome' || screen === 'sign-in' || screen === 'register') {
+        // Only navigate on actual sign-in, not on TOKEN_REFRESHED or other silent events
+        if (event === 'SIGNED_IN') {
           setScreen('home');
         }
       } else {

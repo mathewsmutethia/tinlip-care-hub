@@ -89,13 +89,46 @@ Deno.serve(async (req) => {
         return jsonResponse({ error: 'Please wait before requesting another OTP' }, 429, corsHeaders)
       }
 
-      const { data: profile } = await adminClient.from('clients').select('phone').eq('id', user.id).single()
+      const resendApiKey = Deno.env.get('RESEND_API_KEY')
+      let deliveryMessage = 'OTP generated (email not configured)'
 
-      // OTP is delivered via SMS only — never returned in the response
+      if (resendApiKey && user.email) {
+        try {
+          const emailRes = await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${resendApiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              from: 'Tinlip Autocare <onboarding@resend.dev>',
+              to: user.email,
+              subject: 'Your Tinlip incident verification code',
+              html: `
+                <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
+                  <h2 style="color:#1a1a1a">Verify your incident request</h2>
+                  <p style="color:#555">Use the code below to confirm your incident. It expires in 10 minutes.</p>
+                  <div style="font-size:36px;font-weight:700;letter-spacing:8px;padding:24px;background:#f5f5f5;border-radius:8px;text-align:center;font-family:monospace">
+                    ${otp}
+                  </div>
+                  <p style="color:#999;font-size:12px;margin-top:24px">If you did not request this, ignore this email.</p>
+                </div>
+              `,
+            }),
+          })
+          if (emailRes.ok) {
+            const maskedEmail = user.email.replace(/(.{2})(.*)(@.*)/, '$1***$3')
+            deliveryMessage = `OTP sent to ${maskedEmail}`
+          }
+        } catch {
+          // Email failed — OTP still valid, user can retry
+        }
+      }
+
       return jsonResponse({
         success: true,
         otp_token: otpToken,
-        message: profile?.phone ? `OTP sent to ${profile.phone.slice(0, 4)}****` : 'OTP generated (SMS not configured)',
+        message: deliveryMessage,
       }, 200, corsHeaders)
     }
 
