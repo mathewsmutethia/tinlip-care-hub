@@ -90,7 +90,7 @@ Deno.serve(async (req) => {
       }
 
       const resendApiKey = Deno.env.get('RESEND_API_KEY')
-      let deliveryMessage = 'OTP generated (email not configured)'
+      let deliveryMessage = 'KEY_MISSING'
 
       if (resendApiKey && user.email) {
         try {
@@ -119,9 +119,12 @@ Deno.serve(async (req) => {
           if (emailRes.ok) {
             const maskedEmail = user.email.replace(/(.{2})(.*)(@.*)/, '$1***$3')
             deliveryMessage = `OTP sent to ${maskedEmail}`
+          } else {
+            const resendError = await emailRes.json().catch(() => ({}))
+            deliveryMessage = `EMAIL_FAILED: ${resendError?.message ?? emailRes.status}`
           }
-        } catch {
-          // Email failed — OTP still valid, user can retry
+        } catch (err: any) {
+          deliveryMessage = `EMAIL_ERROR: ${err?.message ?? 'unknown'}`
         }
       }
 
