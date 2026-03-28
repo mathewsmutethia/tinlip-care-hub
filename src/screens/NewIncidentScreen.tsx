@@ -44,7 +44,7 @@ export default function NewIncidentScreen() {
         vehicles.list(),
         incidents.list(),
       ]);
-      const active = vData?.filter((v: any) => v.status === 'approved') || [];
+      const active = vData?.filter((v: any) => v.status === 'active') || [];
       setVehicleList(active);
       const activeVehicleIds = new Set(
         (iData ?? [])
