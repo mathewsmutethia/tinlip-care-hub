@@ -98,6 +98,16 @@ export default function NewIncidentScreen() {
     );
   };
 
+  const extractFunctionError = async (e: any, fallback: string): Promise<string> => {
+    try {
+      if (e?.context?.json) {
+        const body = await e.context.json();
+        if (body?.error) return body.error;
+      }
+    } catch {}
+    return e?.message || fallback;
+  };
+
   const handleStart = async () => {
     if (!selectedVehicle || !selectedType || !description || !location) {
       setError('Please fill all required fields');
@@ -111,7 +121,8 @@ export default function NewIncidentScreen() {
       setOtpMessage(result.message);
       setStep(4);
     } catch (e: any) {
-      setError(e.message || 'Failed to request OTP');
+      const msg = await extractFunctionError(e, 'Failed to request OTP');
+      setError(msg);
     }
     setLoading(false);
   };
@@ -136,7 +147,8 @@ export default function NewIncidentScreen() {
       setClaimCode(result.claim_code);
       setConfirmed(true);
     } catch (e: any) {
-      setError(e.message || 'Failed to create incident');
+      const msg = await extractFunctionError(e, 'Failed to create incident');
+      setError(msg);
     }
     setLoading(false);
   };
