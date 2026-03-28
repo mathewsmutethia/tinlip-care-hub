@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
-import { vehicles, incidentService } from '@/lib/supabase';
+import { vehicles, incidentService, incidents } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ArrowLeft, MapPin, Car, CheckCircle2, Loader2 } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 const incidentTypeOptions = [
   { id: 'regular_service', label: 'Regular Service', description: 'Scheduled maintenance', icon: '🔧' },
@@ -15,17 +16,20 @@ const incidentTypeOptions = [
 
 export default function NewIncidentScreen() {
   const { navigate } = useApp();
+  const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [gpsLoading, setGpsLoading] = useState(false);
   const [error, setError] = useState('');
   const [step, setStep] = useState(1);
-  
+
   const [vehicleList, setVehicleList] = useState<any[]>([]);
+  const [activeIncidentVehicleIds, setActiveIncidentVehicleIds] = useState<Set<string>>(new Set());
   const [selectedVehicle, setSelectedVehicle] = useState('');
   const [selectedType, setSelectedType] = useState('');
   const [description, setDescription] = useState('');
   const [location, setLocation] = useState('');
   const [mileage, setMileage] = useState('');
-  
+
   const [otp, setOtp] = useState('');
   const [otpToken, setOtpToken] = useState('');
   const [otpMessage, setOtpMessage] = useState('');
@@ -36,12 +40,62 @@ export default function NewIncidentScreen() {
 
   const loadVehicles = async () => {
     try {
-      const { data } = await vehicles.list();
-      const active = data?.filter((v: any) => v.status === 'approved') || [];
+      const [{ data: vData }, { data: iData }] = await Promise.all([
+        vehicles.list(),
+        incidents.list(),
+      ]);
+      const active = vData?.filter((v: any) => v.status === 'approved') || [];
       setVehicleList(active);
-    } catch (e) {
-      console.error('Failed to load vehicles:', e);
+      const activeVehicleIds = new Set(
+        (iData ?? [])
+          .filter((i: any) => ['open', 'in_progress', 'service_assigned'].includes(i.status))
+          .map((i: any) => i.vehicle_id as string)
+      );
+      setActiveIncidentVehicleIds(activeVehicleIds);
+    } catch {
+      // non-blocking
     }
+  };
+
+  const handleUseGps = () => {
+    if (!navigator.geolocation) {
+      toast({ title: 'GPS not available on this device', variant: 'destructive' });
+      return;
+    }
+    setGpsLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          const { latitude, longitude } = pos.coords;
+          const controller = new AbortController();
+          const geocodeTimeout = setTimeout(() => controller.abort(), 5000);
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`,
+            {
+              headers: { 'Accept-Language': 'en', 'User-Agent': 'tinlip-client/1.0 (support@tinlipautocare.co.ke)' },
+              signal: controller.signal,
+            }
+          );
+          clearTimeout(geocodeTimeout);
+          const data = await res.json();
+          const address = data.display_name || `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+          setLocation(address);
+        } catch {
+          const { latitude, longitude } = pos.coords;
+          setLocation(`${latitude.toFixed(5)}, ${longitude.toFixed(5)}`);
+        }
+        setGpsLoading(false);
+      },
+      (err) => {
+        setGpsLoading(false);
+        if (err.code === err.PERMISSION_DENIED) {
+          toast({ title: 'Location access denied', description: 'Please enter your location manually.', variant: 'destructive' });
+        } else {
+          toast({ title: 'Could not get location', description: 'Please enter your location manually.' });
+        }
+      },
+      { timeout: 10000, maximumAge: 60000 }
+    );
   };
 
   const handleStart = async () => {
@@ -51,7 +105,6 @@ export default function NewIncidentScreen() {
     }
     setError('');
     setLoading(true);
-    
     try {
       const result = await incidentService.requestOtp();
       setOtpToken(result.otp_token);
@@ -130,35 +183,41 @@ export default function NewIncidentScreen() {
 
       <div className="flex-1 px-6 pb-8 overflow-y-auto">
         <div className="max-w-md mx-auto animate-fade-in">
-          
+
           {step === 1 && (
             <div className="space-y-3">
               <h2 className="text-xl font-bold text-foreground mb-1">Select Vehicle</h2>
               <p className="text-sm text-muted-foreground mb-4">Which vehicle needs service?</p>
-              
+
               {vehicleList.length === 0 && (
                 <div className="p-4 bg-yellow-50 text-yellow-700 rounded-lg text-sm">
                   No approved vehicles. Complete onboarding first.
                 </div>
               )}
-              
-              {vehicleList.map((v) => (
-                <button
-                  key={v.id}
-                  onClick={() => { setSelectedVehicle(v.id); setStep(2); }}
-                  className={`w-full bg-card border-2 rounded-xl p-4 text-left transition-colors ${selectedVehicle === v.id ? 'border-primary' : 'border-border hover:border-primary/50'}`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-secondary flex items-center justify-center">
-                      <Car className="w-5 h-5 text-foreground" />
+
+              {vehicleList.map((v) => {
+                const hasActive = activeIncidentVehicleIds.has(v.id);
+                return (
+                  <button
+                    key={v.id}
+                    onClick={() => { setSelectedVehicle(v.id); setStep(2); }}
+                    className={`w-full bg-card border-2 rounded-xl p-4 text-left transition-colors ${selectedVehicle === v.id ? 'border-primary' : 'border-border hover:border-primary/50'}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-secondary flex items-center justify-center">
+                        <Car className="w-5 h-5 text-foreground" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-mono font-bold text-foreground">{v.registration}</p>
+                        <p className="text-sm text-muted-foreground">{v.make} {v.model} · {v.year}</p>
+                      </div>
+                      {hasActive && (
+                        <span className="text-xs font-medium text-warning bg-warning/10 px-2 py-0.5 rounded-full">Active incident</span>
+                      )}
                     </div>
-                    <div>
-                      <p className="font-mono font-bold text-foreground">{v.registration}</p>
-                      <p className="text-sm text-muted-foreground">{v.make} {v.model} · {v.year}</p>
-                    </div>
-                  </div>
-                </button>
-              ))}
+                  </button>
+                );
+              })}
             </div>
           )}
 
@@ -197,9 +256,14 @@ export default function NewIncidentScreen() {
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-foreground">Current Location *</label>
                 <div className="relative">
-                  <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g. Thika Road, Nairobi" className="h-12 pr-20" />
-                  <button className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 text-xs text-primary font-medium">
-                    <MapPin className="w-3 h-3" /> Use GPS
+                  <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g. Thika Road, Nairobi" className="h-12 pr-24" />
+                  <button
+                    onClick={handleUseGps}
+                    disabled={gpsLoading}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 text-xs text-primary font-medium disabled:opacity-60"
+                  >
+                    {gpsLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <MapPin className="w-3 h-3" />}
+                    Use GPS
                   </button>
                 </div>
               </div>
@@ -220,7 +284,7 @@ export default function NewIncidentScreen() {
               </div>
               <h2 className="text-xl font-bold text-foreground mb-2">Verify Your Identity</h2>
               <p className="text-sm text-muted-foreground mb-8">{otpMessage || 'Enter the 6-digit code sent to your phone'}</p>
-              
+
               <div className="flex justify-center gap-2 mb-6">
                 {Array.from({ length: 6 }).map((_, i) => (
                   <div
@@ -233,7 +297,7 @@ export default function NewIncidentScreen() {
                   </div>
                 ))}
               </div>
-              
+
               <input
                 type="tel"
                 value={otp}
@@ -244,7 +308,7 @@ export default function NewIncidentScreen() {
                 className="absolute opacity-0 pointer-events-none"
                 autoFocus
               />
-              
+
               <button
                 onClick={() => {
                   const inp = document.querySelector('input[type="tel"]') as HTMLInputElement;
@@ -254,11 +318,11 @@ export default function NewIncidentScreen() {
               >
                 Tap here to enter code
               </button>
-              
-              <Button 
-                variant="amber" 
-                size="full" 
-                onClick={handleVerify} 
+
+              <Button
+                variant="amber"
+                size="full"
+                onClick={handleVerify}
                 disabled={loading || otp.length !== 6}
               >
                 {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Verify & Create Incident'}

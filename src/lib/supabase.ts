@@ -4,8 +4,12 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://xpjqgcuywecqhkddncjq.supabase.co';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhwanFnY3V5d2VjcWhrZGRuY2pxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxNDI2ODYsImV4cCI6MjA4ODcxODY4Nn0.YwDcaxS0DxP6rrfLjMe0ozrBGLJwQWF2znwmdCdlM9w';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error('Missing Supabase environment variables (VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY)');
+}
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
@@ -52,6 +56,12 @@ export const clientProfile = {
     return supabase.from('clients').select('*').eq('id', user.id).single();
   },
   
+  updateNotifications: async (prefs: { status_updates: boolean; payment_reminders: boolean; promotional: boolean }) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+    return supabase.from('clients').update({ notification_preferences: prefs }).eq('id', user.id).select().single();
+  },
+
   // Secure: client can only submit for approval - cannot bypass admin
   submitForApproval: async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -62,7 +72,10 @@ export const clientProfile = {
       throw new Error('Profile already submitted');
     }
     
-    return supabase.from('clients').update({ status: 'pending_approval' }).eq('id', user.id).select().single();
+    return supabase.from('clients').update({
+      status: 'pending_approval',
+      agreement_signed_at: new Date().toISOString(),
+    }).eq('id', user.id).select().single();
   }
 };
 
@@ -82,8 +95,11 @@ export const vehicles = {
     return supabase.from('vehicles').select('*').eq('client_id', client.id).order('created_at', { ascending: false });
   },
   
-  update: (id: string, data: any) => 
-    supabase.from('vehicles').update(data).eq('id', id).select().single()
+  update: async (id: string, data: { mileage?: number }) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+    return supabase.from('vehicles').update(data).eq('id', id).eq('client_id', user.id).select().single();
+  }
 };
 
 // ============================================
@@ -146,8 +162,30 @@ export const incidents = {
   get: (id: string) => 
     supabase.from('incidents').select('*, vehicles(*)').eq('id', id).single(),
   
-  updateStatus: (id: string, status: string) => 
-    supabase.from('incidents').update({ status }).eq('id', id).select().single()
+  updateStatus: async (id: string, status: 'closed') => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+    return supabase.from('incidents').update({ status }).eq('id', id).eq('client_id', user.id).select().single();
+  },
+
+  submitFeedback: async (incidentId: string, feedback: {
+    resolved: boolean;
+    rating: number;
+    timeliness: number;
+    professionalism: number;
+    comments: string;
+  }) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+    return supabase.from('incidents').update({
+      feedback_resolved: feedback.resolved,
+      feedback_rating: feedback.rating,
+      feedback_timeliness: feedback.timeliness,
+      feedback_professionalism: feedback.professionalism,
+      feedback_comments: feedback.comments || null,
+      feedback_submitted_at: new Date().toISOString(),
+    }).eq('id', incidentId).eq('client_id', user.id).select().single();
+  },
 };
 
 // ============================================

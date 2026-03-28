@@ -2,8 +2,10 @@ import { useState } from 'react';
 import { useApp } from '@/context/AppContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ArrowLeft, Upload, CheckCircle2, FileText, Plus, X, Loader2 } from 'lucide-react';
+import { ArrowLeft, Upload, CheckCircle2, FileText, Plus, X, Loader2, Download } from 'lucide-react';
 import { clientProfile, vehicles, documents } from '@/lib/supabase';
+
+const AGREEMENT_PDF_URL = 'https://xpjqgcuywecqhkddncjq.supabase.co/storage/v1/object/public/public-assets/tinlip-service-agreement.pdf';
 
 interface VehicleForm {
   registration: string;
@@ -238,9 +240,10 @@ export default function OnboardingScreen() {
                         placeholder={f.placeholder}
                         value={(v as any)[f.key]}
                         onChange={(e) => {
-                          const updated = [...vehiclesList];
-                          (updated[idx] as any)[f.key] = e.target.value;
-                          setVehiclesList(updated);
+                          const val = e.target.value;
+                          setVehiclesList(vehiclesList.map((item, i) =>
+                            i === idx ? { ...item, [f.key]: val } : item
+                          ));
                         }}
                         className="h-10"
                       />
@@ -251,9 +254,10 @@ export default function OnboardingScreen() {
                     <select
                       value={v.year}
                       onChange={(e) => {
-                        const updated = [...vehiclesList];
-                        updated[idx].year = e.target.value;
-                        setVehiclesList(updated);
+                        const val = e.target.value;
+                        setVehiclesList(vehiclesList.map((item, i) =>
+                          i === idx ? { ...item, year: val } : item
+                        ));
                       }}
                       className="w-full h-10 px-3 rounded-md border bg-card text-sm"
                     >
@@ -281,9 +285,8 @@ export default function OnboardingScreen() {
                   type="file"
                   accept="image/*,.pdf"
                   onChange={(e) => {
-                    const updated = [...vehicleDocs];
-                    updated[0].logbook = e.target.files?.[0] || null;
-                    setVehicleDocs(updated);
+                    const file = e.target.files?.[0] || null;
+                    setVehicleDocs(vehicleDocs.map((d, i) => i === 0 ? { ...d, logbook: file } : d));
                   }}
                   className="w-full h-24 border-2 border-dashed rounded-lg flex items-center justify-center text-sm text-muted-foreground cursor-pointer"
                 />
@@ -295,9 +298,8 @@ export default function OnboardingScreen() {
                   type="file"
                   accept="image/*,.pdf"
                   onChange={(e) => {
-                    const updated = [...vehicleDocs];
-                    updated[0].insurance = e.target.files?.[0] || null;
-                    setVehicleDocs(updated);
+                    const file = e.target.files?.[0] || null;
+                    setVehicleDocs(vehicleDocs.map((d, i) => i === 0 ? { ...d, insurance: file } : d));
                   }}
                   className="w-full h-24 border-2 border-dashed rounded-lg flex items-center justify-center text-sm text-muted-foreground cursor-pointer"
                 />
@@ -321,8 +323,13 @@ export default function OnboardingScreen() {
                 <p className="mb-2">3. Payment: annual via M-Pesa. Coverage activates on payment.</p>
                 <p>4. Claims: must be initiated through the Tinlip portal.</p>
               </div>
-              <Button variant="outline" size="default" className="gap-2">
-                <FileText className="w-4 h-4" /> Download PDF
+              <Button
+                variant="outline"
+                size="default"
+                className="gap-2"
+                onClick={() => window.open(AGREEMENT_PDF_URL, '_blank')}
+              >
+                <Download className="w-4 h-4" /> Download PDF
               </Button>
               <div className="bg-card rounded-lg border p-4 card-shadow">
                 <p className="text-sm font-medium text-foreground mb-3">Digital Signature</p>

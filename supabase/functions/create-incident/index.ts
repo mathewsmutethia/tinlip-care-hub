@@ -1,8 +1,18 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
+// Update ALLOWED_ORIGINS when a custom domain is added
+const ALLOWED_ORIGINS = [
+  'https://tinlip-care-hub.lovable.app',
+]
+
+function getCorsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get('Origin') ?? ''
+  const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0]
+  return {
+    'Access-Control-Allow-Origin': allowedOrigin,
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Vary': 'Origin',
+  }
 }
 
 async function hashOtp(otp: string): Promise<string> {
@@ -13,7 +23,22 @@ async function hashOtp(otp: string): Promise<string> {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
+function generateClaimCode(): string {
+  const randomBytes = new Uint8Array(6)
+  crypto.getRandomValues(randomBytes)
+  return `TLP-${Array.from(randomBytes).map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase()}`
+}
+
+function jsonResponse(body: unknown, status: number, corsHeaders: Record<string, string>): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  })
+}
+
 Deno.serve(async (req) => {
+  const corsHeaders = getCorsHeaders(req)
+
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
@@ -21,25 +46,20 @@ Deno.serve(async (req) => {
   try {
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
-      return new Response(JSON.stringify({ error: 'Missing authorization' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+      return jsonResponse({ error: 'Missing authorization' }, 401, corsHeaders)
     }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? supabaseServiceKey
 
-    const userClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY') ?? supabaseServiceKey, {
+    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } },
     })
 
     const { data: { user }, error: authError } = await userClient.auth.getUser()
     if (authError || !user) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+      return jsonResponse({ error: 'Unauthorized' }, 401, corsHeaders)
     }
 
     const body = await req.json()
@@ -48,136 +68,79 @@ Deno.serve(async (req) => {
     const adminClient = createClient(supabaseUrl, supabaseServiceKey)
 
     if (action === 'request_otp') {
-      // Rate limit: max 1 OTP request per 60 seconds per user
-      const { data: recentOtp } = await adminClient.from('audit_logs')
-        .select('created_at')
-        .eq('user_id', user.id)
-        .eq('action', 'otp_generated')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single()
-
-      if (recentOtp) {
-        const age = Date.now() - new Date(recentOtp.created_at!).getTime()
-        if (age < 60 * 1000) {
-          return new Response(JSON.stringify({ error: 'Please wait before requesting another OTP' }), {
-            status: 429,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          })
-        }
-      }
-
       const array = new Uint32Array(1)
       crypto.getRandomValues(array)
       const otp = (100000 + (array[0] % 900000)).toString()
       const otpHash = await hashOtp(otp)
-
       const otpToken = crypto.randomUUID()
 
-      await adminClient.from('audit_logs').insert({
-        user_id: user.id,
-        action: 'otp_generated',
-        entity_type: `otp_hash:${otpHash}`,
-        entity_id: otpToken,
+      // Atomic: advisory lock + rate-limit check + insert in one transaction
+      const { data: result, error: rpcError } = await adminClient.rpc('generate_otp_record', {
+        p_user_id: user.id,
+        p_otp_hash: otpHash,
+        p_otp_token: otpToken,
       })
 
-      console.log(`[DEV] OTP for user ${user.id}: ${otp}`)
+      if (rpcError) {
+        return jsonResponse({ error: 'Failed to generate OTP' }, 500, corsHeaders)
+      }
+
+      if (result?.rate_limited) {
+        return jsonResponse({ error: 'Please wait before requesting another OTP' }, 429, corsHeaders)
+      }
 
       const { data: profile } = await adminClient.from('clients').select('phone').eq('id', user.id).single()
 
-      return new Response(JSON.stringify({
+      // OTP is delivered via SMS only — never returned in the response
+      return jsonResponse({
         success: true,
         otp_token: otpToken,
         message: profile?.phone ? `OTP sent to ${profile.phone.slice(0, 4)}****` : 'OTP generated (SMS not configured)',
-        // DEV ONLY - remove in production:
-        dev_otp: otp,
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+      }, 200, corsHeaders)
     }
 
     if (action === 'verify_and_create') {
       const { otp_token, otp_code, vehicle_id, type, description, location, mileage } = body
 
       if (!otp_token || !otp_code || !vehicle_id || !type || !description || !location) {
-        return new Response(JSON.stringify({ error: 'Missing required fields' }), {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        })
+        return jsonResponse({ error: 'Missing required fields' }, 400, corsHeaders)
       }
 
-      if (description.length > 2000 || location.length > 500 || type.length > 50) {
-        return new Response(JSON.stringify({ error: 'Input too long' }), {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        })
+      if (
+        typeof description !== 'string' || description.length > 2000 ||
+        typeof location !== 'string' || location.length > 500 ||
+        typeof type !== 'string' || type.length > 50
+      ) {
+        return jsonResponse({ error: 'Input too long or invalid type' }, 400, corsHeaders)
       }
 
-      // Retrieve stored OTP
-      const { data: otpRecord } = await adminClient.from('audit_logs')
-        .select('*')
-        .eq('entity_id', otp_token)
-        .eq('user_id', user.id)
-        .eq('action', 'otp_generated')
-        .single()
-
-      if (!otpRecord || !otpRecord.entity_type?.startsWith('otp_hash:')) {
-        return new Response(JSON.stringify({ error: 'Invalid or expired OTP' }), {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        })
+      if (mileage !== undefined && mileage !== null) {
+        const parsedMileage = Number(mileage)
+        if (!Number.isFinite(parsedMileage) || parsedMileage < 0 || parsedMileage > 999999) {
+          return jsonResponse({ error: 'Invalid mileage value' }, 400, corsHeaders)
+        }
       }
 
-      // Check if already used or max attempts reached
-      if (otpRecord.entity_type === 'otp:used' || otpRecord.entity_type === 'otp:locked') {
-        return new Response(JSON.stringify({ error: 'OTP already used or locked' }), {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        })
-      }
-
-      // Check OTP expiry (10 minutes)
-      const otpAge = Date.now() - new Date(otpRecord.created_at!).getTime()
-      if (otpAge > 10 * 60 * 1000) {
-        await adminClient.from('audit_logs').update({ entity_type: 'otp:used' }).eq('entity_id', otp_token)
-        return new Response(JSON.stringify({ error: 'OTP expired' }), {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        })
-      }
-
-      // Count failed attempts for this token
-      const { count: failedAttempts } = await adminClient.from('audit_logs')
-        .select('*', { count: 'exact', head: true })
-        .eq('entity_id', otp_token)
-        .eq('action', 'otp_failed')
-        .eq('user_id', user.id)
-
-      if ((failedAttempts ?? 0) >= 5) {
-        await adminClient.from('audit_logs').update({ entity_type: 'otp:locked' }).eq('entity_id', otp_token)
-        return new Response(JSON.stringify({ error: 'Too many failed attempts. Request a new OTP.' }), {
-          status: 429,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        })
-      }
-
-      // Compare hashed OTP
-      const storedHash = otpRecord.entity_type.replace('otp_hash:', '')
       const inputHash = await hashOtp(otp_code)
 
-      if (storedHash !== inputHash) {
-        // Record failed attempt
-        await adminClient.from('audit_logs').insert({
-          user_id: user.id,
-          action: 'otp_failed',
-          entity_type: 'otp_verification',
-          entity_id: otp_token,
-        })
-        return new Response(JSON.stringify({ error: 'Invalid OTP code' }), {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        })
+      // Atomic: row-level lock + expiry + attempt count + invalidation in one transaction
+      const { data: verifyResult, error: verifyError } = await adminClient.rpc('verify_and_invalidate_otp', {
+        p_user_id: user.id,
+        p_otp_token: otp_token,
+        p_input_hash: inputHash,
+      })
+
+      if (verifyError) {
+        return jsonResponse({ error: 'Failed to verify OTP' }, 500, corsHeaders)
       }
+
+      const status = verifyResult?.status
+      if (status === 'invalid') return jsonResponse({ error: 'Invalid or expired OTP' }, 400, corsHeaders)
+      if (status === 'used_or_locked') return jsonResponse({ error: 'OTP already used or locked' }, 400, corsHeaders)
+      if (status === 'expired') return jsonResponse({ error: 'OTP expired' }, 400, corsHeaders)
+      if (status === 'locked') return jsonResponse({ error: 'Too many failed attempts. Request a new OTP.' }, 429, corsHeaders)
+      if (status === 'wrong_code') return jsonResponse({ error: 'Invalid OTP code' }, 400, corsHeaders)
+      if (status !== 'valid') return jsonResponse({ error: 'OTP verification failed' }, 400, corsHeaders)
 
       // Verify vehicle belongs to user
       const { data: vehicle } = await adminClient.from('vehicles')
@@ -187,54 +150,36 @@ Deno.serve(async (req) => {
         .single()
 
       if (!vehicle) {
-        return new Response(JSON.stringify({ error: 'Vehicle not found or not owned by you' }), {
-          status: 403,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        })
+        return jsonResponse({ error: 'Vehicle not found or not owned by you' }, 403, corsHeaders)
       }
 
-      // Create incident
-      const claimCode = `TLP-${Date.now().toString(36).toUpperCase()}`
+      // Create incident with cryptographically random claim code
+      const claimCode = generateClaimCode()
       const { data: incident, error: insertError } = await adminClient.from('incidents').insert({
         client_id: user.id,
         vehicle_id,
         type,
         description,
         location,
-        mileage: mileage || null,
+        mileage: mileage != null ? Number(mileage) : null,
         claim_code: claimCode,
         status: 'open',
       }).select().single()
 
       if (insertError) {
-        return new Response(JSON.stringify({ error: 'Failed to create incident' }), {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        })
+        return jsonResponse({ error: 'Failed to create incident' }, 500, corsHeaders)
       }
 
-      // Invalidate OTP
-      await adminClient.from('audit_logs').update({
-        entity_type: 'otp:used',
-      }).eq('entity_id', otp_token)
-
-      return new Response(JSON.stringify({
+      return jsonResponse({
         success: true,
         claim_code: claimCode,
         incident_id: incident.id,
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+      }, 200, corsHeaders)
     }
 
-    return new Response(JSON.stringify({ error: 'Invalid action' }), {
-      status: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
-  } catch (e) {
-    return new Response(JSON.stringify({ error: 'Internal server error' }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+    return jsonResponse({ error: 'Invalid action' }, 400, corsHeaders)
+
+  } catch (_e) {
+    return jsonResponse({ error: 'Internal server error' }, 500, corsHeaders)
   }
 })

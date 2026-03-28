@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { useApp } from '@/context/AppContext';
+import { incidents } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Star, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Star, CheckCircle2, Loader2 } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 function StarRating({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
   return (
@@ -19,18 +21,39 @@ function StarRating({ label, value, onChange }: { label: string; value: number; 
 }
 
 export default function ServiceFeedbackScreen() {
-  const { navigate } = useApp();
+  const { navigate, selectedIncidentId } = useApp();
+  const { toast } = useToast();
   const [resolved, setResolved] = useState<boolean | null>(null);
   const [overall, setOverall] = useState(0);
   const [timeliness, setTimeliness] = useState(0);
   const [professionalism, setProfessionalism] = useState(0);
   const [comments, setComments] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const canSubmit = resolved !== null && overall > 0 && timeliness > 0 && professionalism > 0;
+
+  const handleSubmit = async () => {
+    if (!canSubmit || !selectedIncidentId) return;
+    setLoading(true);
+    try {
+      await incidents.submitFeedback(selectedIncidentId, {
+        resolved: resolved!,
+        rating: overall,
+        timeliness,
+        professionalism,
+        comments,
+      });
+      setSubmitted(true);
+    } catch (e: any) {
+      toast({ title: 'Failed to submit', description: e.message || 'Please try again.', variant: 'destructive' });
+    }
+    setLoading(false);
+  };
 
   if (submitted) {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center px-6 animate-fade-in relative overflow-hidden">
-        {/* Confetti */}
         {Array.from({ length: 20 }).map((_, i) => (
           <div
             key={i}
@@ -91,7 +114,9 @@ export default function ServiceFeedbackScreen() {
             />
           </div>
 
-          <Button variant="amber" size="full" onClick={() => setSubmitted(true)}>Submit Feedback</Button>
+          <Button variant="amber" size="full" onClick={handleSubmit} disabled={!canSubmit || loading}>
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Submit Feedback'}
+          </Button>
         </div>
       </div>
     </div>
