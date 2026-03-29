@@ -6,6 +6,7 @@ import SignInScreen from '@/screens/SignInScreen';
 import RegisterScreen from '@/screens/RegisterScreen';
 import EmailVerifyScreen from '@/screens/EmailVerifyScreen';
 import ForgotPasswordScreen from '@/screens/ForgotPasswordScreen';
+import ResetPasswordScreen from '@/screens/ResetPasswordScreen';
 import OnboardingScreen from '@/screens/OnboardingScreen';
 import HomeScreen from '@/screens/HomeScreen';
 import VehiclesScreen from '@/screens/VehiclesScreen';
@@ -29,6 +30,7 @@ function AppRouter() {
       case 'register': return <RegisterScreen />;
       case 'email-verify': return <EmailVerifyScreen />;
       case 'forgot-password': return <ForgotPasswordScreen />;
+      case 'reset-password': return <ResetPasswordScreen />;
       default: return <WelcomeScreen />;
     }
   }

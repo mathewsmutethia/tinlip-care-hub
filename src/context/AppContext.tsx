@@ -2,10 +2,10 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { supabase } from '@/integrations/supabase/client';
 import type { User } from '@supabase/supabase-js';
 
-type AppScreen = 
-  | 'welcome' | 'sign-in' | 'register' | 'email-verify' | 'forgot-password'
+type AppScreen =
+  | 'welcome' | 'sign-in' | 'register' | 'email-verify' | 'forgot-password' | 'reset-password'
   | 'onboarding'
-  | 'home' | 'vehicles' | 'vehicle-detail' | 'incidents' | 'incident-detail' 
+  | 'home' | 'vehicles' | 'vehicle-detail' | 'incidents' | 'incident-detail'
   | 'new-incident' | 'coverage' | 'profile' | 'service-feedback';
 
 interface ClientProfile {
@@ -78,8 +78,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (currentUser) {
         // Use setTimeout to avoid Supabase deadlock
         setTimeout(() => fetchProfile(currentUser.id), 0);
-        // Only navigate on actual sign-in, not on TOKEN_REFRESHED or other silent events
-        if (event === 'SIGNED_IN') {
+        if (event === 'PASSWORD_RECOVERY') {
+          setScreen('reset-password');
+        } else if (event === 'SIGNED_IN') {
           setScreen('home');
         }
       } else {
