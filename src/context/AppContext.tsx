@@ -19,6 +19,7 @@ interface ClientProfile {
   id_number: string | null;
   id_document_url: string | null;
   notification_preferences: { status_updates: boolean; payment_reminders: boolean; promotional: boolean } | null;
+  [key: string]: unknown;
 }
 
 interface AppState {
