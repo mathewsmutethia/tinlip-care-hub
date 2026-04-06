@@ -44,6 +44,7 @@ export type Database = {
       clients: {
         Row: {
           address: string | null
+          agreement_signed_at: string | null
           company_name: string | null
           created_at: string | null
           email: string
@@ -52,12 +53,15 @@ export type Database = {
           id_document_url: string | null
           id_number: string | null
           name: string | null
+          notification_preferences: Json | null
           phone: string | null
+          rejection_reason: string | null
           role: string | null
           status: string | null
         }
         Insert: {
           address?: string | null
+          agreement_signed_at?: string | null
           company_name?: string | null
           created_at?: string | null
           email: string
@@ -66,12 +70,15 @@ export type Database = {
           id_document_url?: string | null
           id_number?: string | null
           name?: string | null
+          notification_preferences?: Json | null
           phone?: string | null
+          rejection_reason?: string | null
           role?: string | null
           status?: string | null
         }
         Update: {
           address?: string | null
+          agreement_signed_at?: string | null
           company_name?: string | null
           created_at?: string | null
           email?: string
@@ -80,7 +87,9 @@ export type Database = {
           id_document_url?: string | null
           id_number?: string | null
           name?: string | null
+          notification_preferences?: Json | null
           phone?: string | null
+          rejection_reason?: string | null
           role?: string | null
           status?: string | null
         }
@@ -137,9 +146,16 @@ export type Database = {
           client_id: string | null
           created_at: string | null
           description: string | null
+          feedback_comments: string | null
+          feedback_professionalism: number | null
+          feedback_rating: number | null
+          feedback_resolved: boolean | null
+          feedback_submitted_at: string | null
+          feedback_timeliness: number | null
           id: string
           location: string | null
           mileage: number | null
+          notes: Json | null
           otp: string | null
           status: string | null
           type: string | null
@@ -150,9 +166,16 @@ export type Database = {
           client_id?: string | null
           created_at?: string | null
           description?: string | null
+          feedback_comments?: string | null
+          feedback_professionalism?: number | null
+          feedback_rating?: number | null
+          feedback_resolved?: boolean | null
+          feedback_submitted_at?: string | null
+          feedback_timeliness?: number | null
           id?: string
           location?: string | null
           mileage?: number | null
+          notes?: Json | null
           otp?: string | null
           status?: string | null
           type?: string | null
@@ -163,9 +186,16 @@ export type Database = {
           client_id?: string | null
           created_at?: string | null
           description?: string | null
+          feedback_comments?: string | null
+          feedback_professionalism?: number | null
+          feedback_rating?: number | null
+          feedback_resolved?: boolean | null
+          feedback_submitted_at?: string | null
+          feedback_timeliness?: number | null
           id?: string
           location?: string | null
           mileage?: number | null
+          notes?: Json | null
           otp?: string | null
           status?: string | null
           type?: string | null
@@ -187,6 +217,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      otp_records: {
+        Row: {
+          attempts: number
+          created_at: string
+          expires_at: string
+          id: string
+          otp_hash: string
+          otp_token: string
+          used: boolean
+          user_id: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          expires_at?: string
+          id?: string
+          otp_hash: string
+          otp_token: string
+          used?: boolean
+          user_id: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          expires_at?: string
+          id?: string
+          otp_hash?: string
+          otp_token?: string
+          used?: boolean
+          user_id?: string
+        }
+        Relationships: []
       }
       payments: {
         Row: {
@@ -278,6 +341,7 @@ export type Database = {
           mileage: number | null
           model: string | null
           registration: string
+          rejection_reason: string | null
           status: string | null
           year: number | null
         }
@@ -293,6 +357,7 @@ export type Database = {
           mileage?: number | null
           model?: string | null
           registration: string
+          rejection_reason?: string | null
           status?: string | null
           year?: number | null
         }
@@ -308,6 +373,7 @@ export type Database = {
           mileage?: number | null
           model?: string | null
           registration?: string
+          rejection_reason?: string | null
           status?: string | null
           year?: number | null
         }
@@ -326,7 +392,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      generate_otp_record: {
+        Args: { p_otp_hash: string; p_otp_token: string; p_user_id: string }
+        Returns: Json
+      }
+      verify_and_invalidate_otp: {
+        Args: { p_input_hash: string; p_otp_token: string; p_user_id: string }
+        Returns: Json
+      }
     }
     Enums: {
       [_ in never]: never
