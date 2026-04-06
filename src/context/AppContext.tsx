@@ -58,7 +58,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const fetchProfile = async (userId: string) => {
     const { data } = await supabase.from('clients').select('*').eq('id', userId).single();
     if (data) {
-      setProfile(data as ClientProfile);
+      setProfile(data as unknown as ClientProfile);
       // Check onboarding status
       const onboarded = data.status !== 'profile_incomplete' && !!data.name && !!data.phone;
       setHasCompletedOnboarding(onboarded);
