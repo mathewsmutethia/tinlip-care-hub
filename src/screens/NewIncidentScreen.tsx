@@ -43,6 +43,20 @@ export default function NewIncidentScreen() {
 
   useEffect(() => { loadVehicles(); }, []);
 
+  useEffect(() => {
+    const raw = sessionStorage.getItem('tinlip_quickstart');
+    if (!raw) return;
+    sessionStorage.removeItem('tinlip_quickstart');
+    try {
+      const { vehicleId, type } = JSON.parse(raw);
+      if (vehicleId) setSelectedVehicle(vehicleId);
+      if (type) setSelectedType(type);
+      if (vehicleId && type) setStep(3);
+    } catch {
+      // malformed — ignore, start at step 1
+    }
+  }, []);
+
   const loadVehicles = async () => {
     try {
       const [{ data: vData }, { data: iData }] = await Promise.all([

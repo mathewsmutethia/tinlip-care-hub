@@ -1,6 +1,7 @@
 import { useApp } from '@/context/AppContext';
 import { vehicles, incidents } from '@/lib/supabase';
 import StatusBadge from '@/components/StatusBadge';
+import GetHelpDrawer from '@/components/GetHelpDrawer';
 import { Button } from '@/components/ui/button';
 import {
   Zap, Car, CreditCard, ClipboardList, ChevronRight,
@@ -128,15 +129,16 @@ export default function HomeScreen() {
 
       {/* Hero CTA — primary revenue action */}
       <div className="px-4 mb-4 md:px-0">
-        <Button
-          variant="amber"
-          size="full"
-          className="h-14 text-base font-bold gap-2 shadow-lg btn-pulse"
-          onClick={() => navigate('new-incident')}
-        >
-          <Zap className="w-5 h-5" />
-          Get Help Now
-        </Button>
+        <GetHelpDrawer>
+          <Button
+            variant="amber"
+            size="full"
+            className="h-14 text-base font-bold gap-2 shadow-lg btn-pulse"
+          >
+            <Zap className="w-5 h-5" />
+            Get Help Now
+          </Button>
+        </GetHelpDrawer>
       </div>
 
       {/* Secondary actions */}
