@@ -1,13 +1,22 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-// Update ALLOWED_ORIGINS when a custom domain is added
-const ALLOWED_ORIGINS = [
+// Base allowed origins — add Vercel/custom domain URLs via ALLOWED_ORIGINS_EXTRA env var
+// (comma-separated list, set in Supabase Dashboard → Edge Functions → Secrets)
+const BASE_ALLOWED_ORIGINS = [
   'https://tinlip-care-hub.lovable.app',
 ]
 
+function getAllowedOrigins(): string[] {
+  const extra = Deno.env.get('ALLOWED_ORIGINS_EXTRA') ?? ''
+  const extraOrigins = extra.split(',').map(s => s.trim()).filter(Boolean)
+  return [...BASE_ALLOWED_ORIGINS, ...extraOrigins]
+}
+
 function getCorsHeaders(req: Request): Record<string, string> {
+  const allowedOrigins = getAllowedOrigins()
   const origin = req.headers.get('Origin') ?? ''
-  const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0]
+  const isLocalhost = origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1')
+  const allowedOrigin = allowedOrigins.includes(origin) || isLocalhost ? origin : BASE_ALLOWED_ORIGINS[0]
   return {
     'Access-Control-Allow-Origin': allowedOrigin,
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -36,6 +45,38 @@ function jsonResponse(body: unknown, status: number, corsHeaders: Record<string,
   })
 }
 
+// Redis rate limiting via Upstash REST API
+// Max 3 OTP requests per user per 2 minutes
+// Set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN in Supabase secrets
+async function checkRedisRateLimit(userId: string): Promise<{ limited: boolean; skipped: boolean }> {
+  const redisUrl = Deno.env.get('UPSTASH_REDIS_REST_URL')
+  const redisToken = Deno.env.get('UPSTASH_REDIS_REST_TOKEN')
+
+  if (!redisUrl || !redisToken) {
+    return { limited: false, skipped: true }
+  }
+
+  const key = `otp_rate:${userId}`
+  const headers = { Authorization: `Bearer ${redisToken}` }
+
+  try {
+    // Atomically increment and return new count
+    const incrRes = await fetch(`${redisUrl}/incr/${key}`, { headers })
+    if (!incrRes.ok) return { limited: false, skipped: true }
+    const { result: count } = await incrRes.json()
+
+    // Set 2-minute TTL on first request only (EXPIRE is a no-op on subsequent calls when key already has TTL)
+    if (count === 1) {
+      await fetch(`${redisUrl}/expire/${key}/120`, { headers })
+    }
+
+    return { limited: count > 3, skipped: false }
+  } catch {
+    // Redis unavailable — fail open (don't block the user, Postgres rate limit still applies)
+    return { limited: false, skipped: true }
+  }
+}
+
 Deno.serve(async (req) => {
   const corsHeaders = getCorsHeaders(req)
 
@@ -51,13 +92,12 @@ Deno.serve(async (req) => {
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? supabaseServiceKey
 
-    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } },
-    })
+    const adminClient = createClient(supabaseUrl, supabaseServiceKey)
 
-    const { data: { user }, error: authError } = await userClient.auth.getUser()
+    // Verify user via Auth API — avoids local JWT parsing (ES256 compat)
+    const token = authHeader.replace('Bearer ', '')
+    const { data: { user }, error: authError } = await adminClient.auth.getUser(token)
     if (authError || !user) {
       return jsonResponse({ error: 'Unauthorized' }, 401, corsHeaders)
     }
@@ -65,9 +105,13 @@ Deno.serve(async (req) => {
     const body = await req.json()
     const { action } = body
 
-    const adminClient = createClient(supabaseUrl, supabaseServiceKey)
-
     if (action === 'request_otp') {
+      // Redis rate limit check — fast, protects SMS/email credits before hitting the DB
+      const { limited } = await checkRedisRateLimit(user.id)
+      if (limited) {
+        return jsonResponse({ error: 'Please wait before requesting another OTP' }, 429, corsHeaders)
+      }
+
       const array = new Uint32Array(1)
       crypto.getRandomValues(array)
       const otp = (100000 + (array[0] % 900000)).toString()
@@ -101,7 +145,7 @@ Deno.serve(async (req) => {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              from: 'Tinlip Autocare <onboarding@resend.dev>',
+              from: Deno.env.get('RESEND_FROM_EMAIL') ?? 'Tinlip Autocare <onboarding@resend.dev>',
               to: user.email,
               subject: 'Your Tinlip incident verification code',
               html: `
@@ -141,10 +185,12 @@ Deno.serve(async (req) => {
         return jsonResponse({ error: 'Missing required fields' }, 400, corsHeaders)
       }
 
+      const VALID_INCIDENT_TYPES = ['regular_service', 'roadside_assistance', 'towing', 'mechanical_diagnosis', 'spares_request']
+
       if (
         typeof description !== 'string' || description.length > 2000 ||
         typeof location !== 'string' || location.length > 500 ||
-        typeof type !== 'string' || type.length > 50
+        typeof type !== 'string' || !VALID_INCIDENT_TYPES.includes(type)
       ) {
         return jsonResponse({ error: 'Input too long or invalid type' }, 400, corsHeaders)
       }

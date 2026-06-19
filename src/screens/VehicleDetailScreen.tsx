@@ -1,13 +1,20 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useApp } from '@/context/AppContext';
-import { supabase } from '@/integrations/supabase/client';
-import { vehicles, documents } from '@/lib/supabase';
+import { vehicles, incidents, documents } from '@/lib/supabase';
 import StatusBadge from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { ArrowLeft, Car, FileText, CheckCircle2, ChevronRight, Loader2, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Car, FileText, CheckCircle2, ChevronRight, Loader2, ExternalLink, Upload } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+
+const SERVICE_LABELS: Record<string, string> = {
+  regular_service: 'Regular Service',
+  roadside_assistance: 'Roadside Assistance',
+  towing: 'Towing',
+  mechanical_diagnosis: 'Mechanical Diagnosis',
+  spares_request: 'Spares Request',
+};
 
 export default function VehicleDetailScreen() {
   const { navigate, selectedVehicleId, selectIncident } = useApp();
@@ -22,12 +29,15 @@ export default function VehicleDetailScreen() {
 
   const [docUrls, setDocUrls] = useState<{ logbook: string | null; insurance: string | null }>({ logbook: null, insurance: null });
   const [loadingDocUrls, setLoadingDocUrls] = useState(false);
+  const [uploadingDoc, setUploadingDoc] = useState<{ logbook: boolean; insurance: boolean }>({ logbook: false, insurance: false });
+  const logbookInputRef = useRef<HTMLInputElement>(null);
+  const insuranceInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!selectedVehicleId) return;
     Promise.all([
-      supabase.from('vehicles').select('*').eq('id', selectedVehicleId).single(),
-      supabase.from('incidents').select('*').eq('vehicle_id', selectedVehicleId).order('created_at', { ascending: false }),
+      vehicles.get(selectedVehicleId),
+      incidents.listByVehicle(selectedVehicleId),
     ]).then(([vehicleRes, incidentsRes]) => {
       setVehicle(vehicleRes.data);
       setVehicleIncidents(incidentsRes.data ?? []);
@@ -48,6 +58,20 @@ export default function VehicleDetailScreen() {
       setLoadingDocUrls(false);
     });
   }, [vehicle]);
+
+  const handleDocUpload = async (type: 'logbook' | 'insurance', file: File) => {
+    if (!vehicle?.id) return;
+    setUploadingDoc((prev) => ({ ...prev, [type]: true }));
+    try {
+      const { data, error } = await documents.uploadVehicleDoc(vehicle.id, type, file);
+      if (error) throw error;
+      setVehicle(data);
+      toast({ title: `${type === 'logbook' ? 'Logbook' : 'Insurance'} uploaded` });
+    } catch {
+      toast({ title: 'Upload failed', variant: 'destructive' });
+    }
+    setUploadingDoc((prev) => ({ ...prev, [type]: false }));
+  };
 
   const handleSaveMileage = async () => {
     const val = Number(newMileage);
@@ -96,8 +120,8 @@ export default function VehicleDetailScreen() {
               <div>
                 <p className="font-mono text-lg font-bold text-foreground">{vehicle.registration}</p>
                 <StatusBadge
-                  status={vehicle.status === 'active' ? 'Active' : vehicle.status === 'pending' ? 'Pending' : 'Inactive'}
-                  variant={vehicle.status === 'active' ? 'active' : vehicle.status === 'pending' ? 'warning' : 'inactive'}
+                  status={['active','approved'].includes(vehicle.status) ? 'Active' : vehicle.status === 'pending' ? 'Pending' : 'Inactive'}
+                  variant={['active','approved'].includes(vehicle.status) ? 'active' : vehicle.status === 'pending' ? 'warning' : 'inactive'}
                 />
               </div>
             </div>
@@ -121,39 +145,52 @@ export default function VehicleDetailScreen() {
           {/* Documents */}
           <div className="bg-card border rounded-xl p-4 card-shadow">
             <h3 className="text-sm font-semibold text-foreground mb-3">Documents</h3>
+            <input ref={logbookInputRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleDocUpload('logbook', f); e.target.value = ''; }} />
+            <input ref={insuranceInputRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleDocUpload('insurance', f); e.target.value = ''; }} />
             <div className="space-y-2">
               {[
-                { label: 'Logbook', uploaded: !!vehicle.logbook_url, url: docUrls.logbook },
-                { label: 'Insurance Certificate', uploaded: !!vehicle.insurance_url, url: docUrls.insurance },
+                { label: 'Logbook', type: 'logbook' as const, uploaded: !!vehicle.logbook_url, url: docUrls.logbook, ref: logbookInputRef },
+                { label: 'Insurance Certificate', type: 'insurance' as const, uploaded: !!vehicle.insurance_url, url: docUrls.insurance, ref: insuranceInputRef },
               ].map((doc) => (
                 <div key={doc.label} className="flex items-center justify-between p-3 rounded-lg bg-secondary/50">
                   <div className="flex items-center gap-2">
                     <FileText className="w-4 h-4 text-muted-foreground" />
                     <span className="text-sm text-foreground">{doc.label}</span>
                   </div>
-                  {doc.uploaded ? (
-                    loadingDocUrls ? (
+                  <div className="flex items-center gap-2">
+                    {doc.uploaded ? (
+                      loadingDocUrls ? (
+                        <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                      ) : doc.url ? (
+                        <a href={doc.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary text-xs font-medium">
+                          View <ExternalLink className="w-3 h-3" />
+                        </a>
+                      ) : (
+                        <CheckCircle2 className="w-4 h-4 text-success" />
+                      )
+                    ) : null}
+                    {uploadingDoc[doc.type] ? (
                       <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-                    ) : doc.url ? (
-                      <a href={doc.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary text-xs font-medium">
-                        View <ExternalLink className="w-3 h-3" />
-                      </a>
                     ) : (
-                      <CheckCircle2 className="w-4 h-4 text-success" />
-                    )
-                  ) : (
-                    <span className="text-xs text-muted-foreground">Not uploaded</span>
-                  )}
+                      <button
+                        onClick={() => doc.ref.current?.click()}
+                        className="flex items-center gap-1 text-primary text-xs font-medium hover:underline"
+                      >
+                        <Upload className="w-3 h-3" />
+                        {doc.uploaded ? 'Replace' : 'Upload'}
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Incident History */}
+          {/* Service History */}
           <div className="bg-card border rounded-xl p-4 card-shadow">
-            <h3 className="text-sm font-semibold text-foreground mb-3">Incident History</h3>
+            <h3 className="text-sm font-semibold text-foreground mb-3">Service History</h3>
             {vehicleIncidents.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">No incidents for this vehicle 😊</p>
+              <p className="text-sm text-muted-foreground text-center py-4">No services for this vehicle yet</p>
             ) : (
               <div className="space-y-2">
                 {vehicleIncidents.map((inc) => (
@@ -165,7 +202,7 @@ export default function VehicleDetailScreen() {
                     <div>
                       <p className="font-mono text-sm font-medium text-foreground">{inc.claim_code}</p>
                       <p className="text-xs text-muted-foreground">
-                        {inc.type} · {new Date(inc.created_at).toLocaleDateString('en-KE')}
+                        {SERVICE_LABELS[inc.type] ?? inc.type} · {new Date(inc.created_at).toLocaleDateString('en-KE')}
                       </p>
                     </div>
                     <ChevronRight className="w-4 h-4 text-muted-foreground" />

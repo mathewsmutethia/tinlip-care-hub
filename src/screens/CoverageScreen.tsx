@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
 import { formatKES } from '@/lib/mockData';
-import { supabase } from '@/integrations/supabase/client';
+import { coverageService, payments as paymentsService } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Shield, Download, Smartphone, Loader2, Mail } from 'lucide-react';
@@ -27,16 +27,13 @@ export default function CoverageScreen() {
 
   async function loadData() {
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-      if (authError || !user) return;
-
       const [coverageRes, paymentsRes, vehiclesRes] = await Promise.all([
-        supabase.from('coverage').select('*').eq('client_id', user.id).eq('status', 'active').order('created_at', { ascending: false }).limit(1),
-        supabase.from('payments').select('*').eq('client_id', user.id).order('created_at', { ascending: false }),
-        supabase.from('vehicles').select('*').eq('client_id', user.id).eq('status', 'active'),
+        coverageService.getActive(),
+        paymentsService.list(),
+        coverageService.getActiveVehicles(),
       ]);
 
-      setCoverage(coverageRes.data?.[0] ?? null);
+      setCoverage(coverageRes.data ?? null);
       setPayments(paymentsRes.data ?? []);
       setActiveVehicles(vehiclesRes.data ?? []);
     } catch {
@@ -126,10 +123,66 @@ export default function CoverageScreen() {
               )}
             </div>
           ) : (
-            <div className="bg-card border rounded-xl p-5 card-shadow text-center">
-              <Shield className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
-              <p className="text-sm font-medium text-foreground mb-1">No active coverage</p>
-              <p className="text-xs text-muted-foreground">Your application is pending admin approval. You'll be notified once your coverage is activated.</p>
+            <div className="bg-card border rounded-xl p-5 card-shadow">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center flex-shrink-0">
+                  <Shield className="w-5 h-5 text-muted-foreground" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-foreground">No active coverage</p>
+                  <p className="text-xs text-muted-foreground">Complete the steps below to get protected</p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {[
+                  {
+                    label: 'Upload vehicle documents',
+                    sub: 'Logbook + Insurance Certificate',
+                    action: () => navigate('profile'),
+                    cta: 'Upload',
+                  },
+                  {
+                    label: 'Pay annual premium',
+                    sub: 'From KES 8,000/year via M-Pesa',
+                    action: () => setMpesaDialogOpen(true),
+                    cta: 'Pay Now',
+                  },
+                  {
+                    label: 'Coverage activates',
+                    sub: 'Within 24 hours of payment',
+                    action: undefined,
+                    cta: undefined,
+                  },
+                ].map((s, i) => (
+                  <div key={i} className="flex items-start gap-3">
+                    <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <span className="text-xs font-bold text-muted-foreground">{i + 1}</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground">{s.label}</p>
+                      <p className="text-xs text-muted-foreground">{s.sub}</p>
+                    </div>
+                    {s.action && (
+                      <button
+                        onClick={s.action}
+                        className="text-xs font-semibold text-primary bg-primary/10 px-3 py-1 rounded-full whitespace-nowrap flex-shrink-0"
+                      >
+                        {s.cta}
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4 pt-3 border-t">
+                <a
+                  href="mailto:support@tinlipautocare.co.ke?subject=Coverage Query"
+                  className="text-xs text-muted-foreground hover:text-primary transition-colors"
+                >
+                  Questions? Email support@tinlipautocare.co.ke
+                </a>
+              </div>
             </div>
           )}
 

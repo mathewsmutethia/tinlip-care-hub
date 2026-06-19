@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/lib/supabase';
 import type { User } from '@supabase/supabase-js';
 
 type AppScreen =
@@ -44,19 +44,38 @@ interface AppState {
 
 const AppContext = createContext<AppState | undefined>(undefined);
 
+// Screens that are valid destinations for an authenticated user.
+// Only these are persisted and restored across reloads.
+const AUTHENTICATED_SCREENS = new Set<AppScreen>([
+  'home', 'vehicles', 'vehicle-detail', 'incidents', 'incident-detail',
+  'new-incident', 'coverage', 'profile', 'service-feedback', 'onboarding',
+]);
+
+const SK_SCREEN   = 'tlp_screen';
+const SK_VEHICLE  = 'tlp_vid';
+const SK_INCIDENT = 'tlp_iid';
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const [screen, setScreen] = useState<AppScreen>('welcome');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
-  const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
-  const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(
+    sessionStorage.getItem(SK_VEHICLE),
+  );
+  const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(
+    sessionStorage.getItem(SK_INCIDENT),
+  );
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<ClientProfile | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [registeredEmail, setRegisteredEmail] = useState('');
 
   const fetchProfile = async (userId: string) => {
-    const { data } = await supabase.from('clients').select('*').eq('id', userId).single();
+    const { data } = await supabase
+      .from('clients')
+      .select('id, email, name, phone, status, company_name, address, id_number, id_document_url, notification_preferences')
+      .eq('id', userId)
+      .single();
     if (data) {
       setProfile(data as unknown as ClientProfile);
       // Check onboarding status
@@ -82,7 +101,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (event === 'PASSWORD_RECOVERY') {
           setScreen('reset-password');
         } else if (event === 'SIGNED_IN') {
-          setScreen('home');
+          setScreen(currentUser.email_confirmed_at ? 'home' : 'email-verify');
         }
       } else {
         setProfile(null);
@@ -99,7 +118,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setIsAuthenticated(!!currentUser);
       if (currentUser) {
         fetchProfile(currentUser.id);
-        setScreen('home');
+        if (currentUser.email_confirmed_at) {
+          // Restore the screen the user was on before the reload, or fall back to home.
+          const saved = sessionStorage.getItem(SK_SCREEN) as AppScreen | null;
+          setScreen(saved && AUTHENTICATED_SCREENS.has(saved) ? saved : 'home');
+        } else {
+          setScreen('email-verify');
+        }
       }
       setAuthLoading(false);
     });
@@ -107,10 +132,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  const navigate = (s: AppScreen) => setScreen(s);
-  
+  const navigate = (s: AppScreen) => {
+    setScreen(s);
+    if (AUTHENTICATED_SCREENS.has(s)) {
+      sessionStorage.setItem(SK_SCREEN, s);
+    } else {
+      // Leaving authenticated space — clear all persisted nav state.
+      sessionStorage.removeItem(SK_SCREEN);
+      sessionStorage.removeItem(SK_VEHICLE);
+      sessionStorage.removeItem(SK_INCIDENT);
+    }
+  };
+
+  const selectVehicle = (id: string | null) => {
+    setSelectedVehicleId(id);
+    if (id) sessionStorage.setItem(SK_VEHICLE, id);
+    else sessionStorage.removeItem(SK_VEHICLE);
+  };
+
+  const selectIncident = (id: string | null) => {
+    setSelectedIncidentId(id);
+    if (id) sessionStorage.setItem(SK_INCIDENT, id);
+    else sessionStorage.removeItem(SK_INCIDENT);
+  };
+
   const logout = async () => {
     await supabase.auth.signOut();
+    sessionStorage.removeItem(SK_SCREEN);
+    sessionStorage.removeItem(SK_VEHICLE);
+    sessionStorage.removeItem(SK_INCIDENT);
     setIsAuthenticated(false);
     setHasCompletedOnboarding(false);
     setUser(null);
@@ -134,8 +184,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       navigate,
       setAuthenticated: setIsAuthenticated,
       setOnboarded: setHasCompletedOnboarding,
-      selectVehicle: setSelectedVehicleId,
-      selectIncident: setSelectedIncidentId,
+      selectVehicle,
+      selectIncident,
       logout, refreshProfile,
       registeredEmail, setRegisteredEmail,
     }}>

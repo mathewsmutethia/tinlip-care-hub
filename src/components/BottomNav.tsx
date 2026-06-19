@@ -4,7 +4,7 @@ import { useApp } from '@/context/AppContext';
 const tabs = [
   { id: 'home' as const, label: 'Home', icon: Home },
   { id: 'vehicles' as const, label: 'Vehicles', icon: Car },
-  { id: 'incidents' as const, label: 'Incidents', icon: Zap },
+  { id: 'incidents' as const, label: 'Services', icon: Zap },
   { id: 'coverage' as const, label: 'Coverage', icon: CreditCard },
   { id: 'profile' as const, label: 'Profile', icon: User },
 ];

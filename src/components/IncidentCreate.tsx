@@ -81,7 +81,7 @@ export default function IncidentCreate() {
     <div className="max-w-md mx-auto p-6">
       {error && <div className="mb-4 p-3 bg-red-50 text-red-600 rounded-lg">{error}</div>}
       {success && (
-        <div className="mb-4 p-3 bg-green-50 text-green-600 rounded-lg">
+        <div className="mb-4 p-3 bg-success/10 text-success rounded-lg">
           <div className="font-bold">{success}</div>
         </div>
       )}
@@ -107,7 +107,7 @@ export default function IncidentCreate() {
                 key={t.value}
                 onClick={() => setIncidentType(t.value)}
                 className={`p-3 border-2 rounded-lg text-left ${
-                  incidentType === t.value ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
+                  incidentType === t.value ? 'border-primary bg-primary/10' : 'border-border'
                 }`}
               >
                 {t.label}
@@ -139,7 +139,7 @@ export default function IncidentCreate() {
             className="w-full p-3 border rounded-lg"
           />
 
-          <button onClick={handleStart} disabled={loading} className="w-full py-3 bg-blue-600 text-white rounded-lg disabled:opacity-50">
+          <button onClick={handleStart} disabled={loading} className="w-full py-3 bg-primary text-primary-foreground rounded-lg disabled:opacity-50">
             {loading ? 'Requesting OTP...' : 'Continue'}
           </button>
         </div>
@@ -148,7 +148,7 @@ export default function IncidentCreate() {
       {step === 2 && (
         <div className="space-y-4">
           <h2 className="text-xl font-bold">Verify with OTP</h2>
-          <p className="text-sm text-gray-600">Enter the 6-digit code sent to your phone</p>
+          <p className="text-sm text-muted-foreground">Enter the 6-digit code sent to your phone</p>
           <input
             type="text"
             value={otp}
@@ -160,11 +160,11 @@ export default function IncidentCreate() {
           <button
             onClick={handleVerifyOtp}
             disabled={loading || otp.length !== 6}
-            className="w-full py-3 bg-green-600 text-white rounded-lg disabled:opacity-50"
+            className="w-full py-3 bg-success text-white rounded-lg disabled:opacity-50"
           >
             {loading ? 'Creating...' : 'Verify & Create'}
           </button>
-          <button onClick={() => setStep(1)} className="w-full py-2 text-gray-600">Back</button>
+          <button onClick={() => setStep(1)} className="w-full py-2 text-muted-foreground">Back</button>
         </div>
       )}
 
@@ -174,7 +174,7 @@ export default function IncidentCreate() {
           <h2 className="text-xl font-bold">Incident Created!</h2>
           <button
             onClick={() => { setStep(1); setSuccess(''); setOtp(''); setOtpToken(''); }}
-            className="w-full py-3 bg-blue-600 text-white rounded-lg"
+            className="w-full py-3 bg-primary text-primary-foreground rounded-lg"
           >
             Start Another
           </button>

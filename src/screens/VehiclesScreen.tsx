@@ -66,7 +66,7 @@ export default function VehiclesScreen() {
                 <ChevronRight className="w-5 h-5 text-muted-foreground mt-1" />
               </div>
               <div className="flex items-center justify-between mt-3">
-                <StatusBadge status={v.status === 'approved' ? 'Active' : v.status === 'pending' ? 'Pending Approval' : 'Inactive'} variant={v.status === 'approved' ? 'active' : v.status === 'pending' ? 'pending' : 'inactive'} />
+                <StatusBadge status={['active','approved'].includes(v.status) ? 'Active' : v.status === 'pending' ? 'Pending Approval' : 'Inactive'} variant={['active','approved'].includes(v.status) ? 'active' : v.status === 'pending' ? 'pending' : 'inactive'} />
                 <span className="text-xs text-muted-foreground">{v.mileage?.toLocaleString()} km</span>
               </div>
             </button>

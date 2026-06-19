@@ -30,6 +30,7 @@ export default function OnboardingStepper() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [agreed, setAgreed] = useState(false);
+  const [createdVehicleId, setCreatedVehicleId] = useState<string | null>(null);
   const [data, setData] = useState<OnboardingData>({
     name: '',
     phone: '',
@@ -86,7 +87,7 @@ export default function OnboardingStepper() {
     }
     setLoading(true);
     try {
-      await vehicles.add({
+      const { data: newVehicle } = await vehicles.add({
         registration: v.registration,
         make: v.make,
         model: v.model,
@@ -95,6 +96,7 @@ export default function OnboardingStepper() {
         engine_number: v.engineNumber || undefined,
         chassis_number: v.chassisNumber || undefined,
       });
+      if (newVehicle?.id) setCreatedVehicleId(newVehicle.id);
       setStep(3);
     } catch (e: any) {
       setError(e.message);
@@ -108,14 +110,12 @@ export default function OnboardingStepper() {
       if (data.idDocument) {
         await documents.uploadClientId(data.idDocument);
       }
-      const { data: vehicleList } = await vehicles.list();
-      if (vehicleList && vehicleList[0]) {
-        const vid = vehicleList[0].id;
+      if (createdVehicleId) {
         if (data.vehicles[0].logbook) {
-          await documents.uploadVehicleDoc(vid, 'logbook', data.vehicles[0].logbook);
+          await documents.uploadVehicleDoc(createdVehicleId, 'logbook', data.vehicles[0].logbook);
         }
         if (data.vehicles[0].insurance) {
-          await documents.uploadVehicleDoc(vid, 'insurance', data.vehicles[0].insurance);
+          await documents.uploadVehicleDoc(createdVehicleId, 'insurance', data.vehicles[0].insurance);
         }
       }
       setStep(4);
@@ -147,7 +147,7 @@ export default function OnboardingStepper() {
         {steps.map(s => (
           <div key={s.num} className="flex flex-col items-center">
             <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-              step >= s.num ? 'bg-blue-600 text-white' : 'bg-gray-200'
+              step >= s.num ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'
             }`}>
               {s.num}
             </div>
@@ -192,11 +192,11 @@ export default function OnboardingStepper() {
           />
           <input
             type="file"
-            accept="image/*,.pdf"
+            accept="image/jpeg,image/png,image/webp,application/pdf"
             onChange={e => setData({ ...data, idDocument: e.target.files?.[0] || null })}
             className="w-full p-3 border rounded-lg"
           />
-          <button onClick={handleClientDetails} disabled={loading} className="w-full py-3 bg-blue-600 text-white rounded-lg">
+          <button onClick={handleClientDetails} disabled={loading} className="w-full py-3 bg-primary text-primary-foreground rounded-lg">
             {loading ? 'Saving...' : 'Continue'}
           </button>
         </div>
@@ -245,10 +245,10 @@ export default function OnboardingStepper() {
             placeholder="Current Mileage (KM) *"
             className="w-full p-3 border rounded-lg"
           />
-          <button onClick={handleVehicleDetails} disabled={loading} className="w-full py-3 bg-blue-600 text-white rounded-lg">
+          <button onClick={handleVehicleDetails} disabled={loading} className="w-full py-3 bg-primary text-primary-foreground rounded-lg">
             {loading ? 'Saving...' : 'Continue'}
           </button>
-          <button onClick={() => setStep(1)} className="w-full py-2 text-gray-600">Back</button>
+          <button onClick={() => setStep(1)} className="w-full py-2 text-muted-foreground">Back</button>
         </div>
       )}
 
@@ -258,22 +258,22 @@ export default function OnboardingStepper() {
           <h2 className="text-xl font-bold">Vehicle Documents</h2>
           <input
             type="file"
-            accept="image/*,.pdf"
+            accept="image/jpeg,image/png,image/webp,application/pdf"
             onChange={e => setData({ ...data, vehicles: [{ ...data.vehicles[0], logbook: e.target.files?.[0] || null }] })}
             placeholder="Logbook *"
             className="w-full p-3 border rounded-lg"
           />
           <input
             type="file"
-            accept="image/*,.pdf"
+            accept="image/jpeg,image/png,image/webp,application/pdf"
             onChange={e => setData({ ...data, vehicles: [{ ...data.vehicles[0], insurance: e.target.files?.[0] || null }] })}
             placeholder="Insurance *"
             className="w-full p-3 border rounded-lg"
           />
-          <button onClick={handleDocumentUpload} disabled={loading} className="w-full py-3 bg-blue-600 text-white rounded-lg">
+          <button onClick={handleDocumentUpload} disabled={loading} className="w-full py-3 bg-primary text-primary-foreground rounded-lg">
             {loading ? 'Uploading...' : 'Continue'}
           </button>
-          <button onClick={() => setStep(2)} className="w-full py-2 text-gray-600">Back</button>
+          <button onClick={() => setStep(2)} className="w-full py-2 text-muted-foreground">Back</button>
         </div>
       )}
 
@@ -289,10 +289,10 @@ export default function OnboardingStepper() {
             <input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)} className="mt-1" />
             <span className="text-sm">I confirm all information is accurate and agree to the terms.</span>
           </label>
-          <button onClick={handleSubmit} disabled={loading || !agreed} className="w-full py-3 bg-green-600 text-white rounded-lg disabled:opacity-50">
+          <button onClick={handleSubmit} disabled={loading || !agreed} className="w-full py-3 bg-success text-white rounded-lg disabled:opacity-50">
             {loading ? 'Submitting...' : 'Submit Application'}
           </button>
-          <button onClick={() => setStep(3)} className="w-full py-2 text-gray-600">Back</button>
+          <button onClick={() => setStep(3)} className="w-full py-2 text-muted-foreground">Back</button>
         </div>
       )}
     </div>

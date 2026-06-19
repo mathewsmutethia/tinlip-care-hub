@@ -68,7 +68,7 @@ export default function ServiceFeedbackScreen() {
         ))}
         <CheckCircle2 className="w-16 h-16 text-success mb-4" />
         <h1 className="text-2xl font-bold text-foreground mb-2">Thank you!</h1>
-        <p className="text-muted-foreground text-center mb-6">Your incident is now closed.</p>
+        <p className="text-muted-foreground text-center mb-6">Your service job is now closed.</p>
         <Button variant="amber" size="full" className="max-w-xs" onClick={() => navigate('home')}>Go Home</Button>
       </div>
     );
@@ -110,8 +110,12 @@ export default function ServiceFeedbackScreen() {
               value={comments}
               onChange={(e) => setComments(e.target.value)}
               placeholder="Share your experience..."
+              maxLength={1000}
               className="w-full h-24 px-3 py-2 rounded-lg border bg-card text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
             />
+            {comments.length > 900 && (
+              <p className="text-xs text-muted-foreground text-right">{comments.length}/1000</p>
+            )}
           </div>
 
           <Button variant="amber" size="full" onClick={handleSubmit} disabled={!canSubmit || loading}>

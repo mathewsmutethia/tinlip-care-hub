@@ -131,3 +131,36 @@
   font-family: 'Plus Jakarta Sans', sans-serif;
   font-weight: 700;
 }
+
+/* Welcome screen gradient background */
+.welcome-gradient-bg {
+  background:
+    radial-gradient(ellipse at 15% 25%, hsl(38 78% 52% / 0.15) 0%, transparent 55%),
+    radial-gradient(ellipse at 85% 75%, hsl(38 78% 52% / 0.10) 0%, transparent 50%),
+    hsl(var(--nav-dark));
+}
+
+/* Pulsing ring for primary CTA buttons */
+@keyframes btn-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 hsl(38 78% 52% / 0.45); }
+  50%       { box-shadow: 0 0 0 10px hsl(38 78% 52% / 0); }
+}
+.btn-pulse {
+  animation: btn-pulse 2s ease-in-out infinite;
+}
+
+/* Confetti falling (used in celebration overlay) */
+@keyframes confetti-fall {
+  0%   { transform: translateY(0) rotate(0deg);   opacity: 1; }
+  100% { transform: translateY(110vh) rotate(400deg); opacity: 0; }
+}
+
+/* Benefit chip pop-in (used in onboarding celebration) */
+@keyframes chip-pop {
+  0%   { opacity: 0; transform: scale(0.88) translateY(10px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+.chip-pop {
+  animation: chip-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  opacity: 0;
+}

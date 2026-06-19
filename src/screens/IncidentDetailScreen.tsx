@@ -1,15 +1,25 @@
 import { useEffect, useState } from 'react';
 import { useApp } from '@/context/AppContext';
-import { supabase } from '@/integrations/supabase/client';
+import { incidents, supabase } from '@/lib/supabase';
 import StatusBadge from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, MapPin, Clock, Car, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 
-const STATUS_ORDER = ['open', 'in_progress', 'completed', 'closed'];
+const STATUS_ORDER = ['open', 'in_progress', 'service_assigned', 'completed', 'closed'];
+
+const SERVICE_LABELS: Record<string, string> = {
+  regular_service: 'Regular Service',
+  roadside_assistance: 'Roadside Assistance',
+  towing: 'Towing',
+  mechanical_diagnosis: 'Mechanical Diagnosis',
+  spares_request: 'Spares Request',
+};
 
 const TIMELINE_LABELS: Record<string, string> = {
   open: 'Reported',
   in_progress: 'In Progress',
+  service_assigned: 'Provider Assigned',
   completed: 'Service Completed',
   closed: 'Closed',
 };
@@ -29,15 +39,32 @@ export default function IncidentDetailScreen() {
 
   useEffect(() => {
     if (!selectedIncidentId) return;
-    supabase
-      .from('incidents')
-      .select('*, vehicles(registration, make, model)')
-      .eq('id', selectedIncidentId)
-      .single()
-      .then(({ data }) => {
-        setIncident(data);
-        setLoading(false);
-      });
+    incidents.get(selectedIncidentId).then(({ data }) => {
+      setIncident(data);
+      setLoading(false);
+    });
+
+    const channel = supabase
+      .channel(`incident-${selectedIncidentId}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'incidents', filter: `id=eq.${selectedIncidentId}` },
+        (payload) => {
+          const updated = payload.new as any;
+          setIncident((prev: any) => ({ ...prev, ...updated }));
+          const statusLabel: Record<string, string> = {
+            in_progress: 'Your request is being handled',
+            service_assigned: 'A provider has been assigned',
+            completed: 'Service completed',
+            closed: 'Job closed',
+          };
+          const msg = statusLabel[updated.status];
+          if (msg) toast.success(msg);
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, [selectedIncidentId]);
 
   if (loading) {
@@ -61,14 +88,17 @@ export default function IncidentDetailScreen() {
     <div className="pb-20 md:pb-4 animate-fade-in">
       <div className="px-4 pt-4 pb-4 flex items-center gap-3 md:px-0">
         <button onClick={() => navigate('incidents')} className="p-2 -ml-2 text-muted-foreground hover:text-foreground"><ArrowLeft className="w-5 h-5" /></button>
-        <h1 className="text-lg font-semibold text-foreground">Incident Details</h1>
+        <h1 className="text-lg font-semibold text-foreground">Service Details</h1>
       </div>
 
       <div className="px-4 space-y-4 md:px-0">
         {/* Header */}
         <div className="bg-card border rounded-xl p-4 card-shadow">
           <div className="flex items-center justify-between mb-3">
-            <span className="font-mono text-lg font-bold text-foreground">{incident.claim_code}</span>
+            <div>
+              <p className="text-xs text-muted-foreground mb-0.5">Reference #</p>
+              <span className="font-mono text-lg font-bold text-foreground">{incident.claim_code}</span>
+            </div>
             <StatusBadge status={incident.status} variant={statusVariant} />
           </div>
           <div className="space-y-2 text-sm">
@@ -80,7 +110,7 @@ export default function IncidentDetailScreen() {
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="bg-secondary px-2 py-0.5 rounded-full text-xs font-medium text-foreground">{incident.type}</span>
+              <span className="bg-secondary px-2 py-0.5 rounded-full text-xs font-medium text-foreground">{SERVICE_LABELS[incident.type] ?? incident.type}</span>
             </div>
             {incident.location && (
               <div className="flex items-center gap-2 text-muted-foreground">

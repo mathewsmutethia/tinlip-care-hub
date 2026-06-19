@@ -1,11 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useApp } from '@/context/AppContext';
-import { clientProfile, documents, vehicles } from '@/lib/supabase';
-import { supabase } from '@/integrations/supabase/client';
+import { auth, clientProfile, documents, vehicles } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { FileText, Bell, Lock, ScrollText, HelpCircle, LogOut, ChevronRight, ExternalLink, Mail, Phone, Loader2 } from 'lucide-react';
+import { FileText, Bell, Lock, ScrollText, HelpCircle, LogOut, ChevronRight, ExternalLink, Mail, Phone, Loader2, Upload } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export default function ProfileScreen() {
@@ -16,6 +15,9 @@ export default function ProfileScreen() {
   const [vehicleList, setVehicleList] = useState<any[]>([]);
   const [docUrls, setDocUrls] = useState<Record<string, string>>({});
   const [loadingDocs, setLoadingDocs] = useState(false);
+  const [uploadingDocKey, setUploadingDocKey] = useState<string | null>(null);
+  const docUploadInputRef = useRef<HTMLInputElement>(null);
+  const pendingUploadRef = useRef<{ key: string; vehicleId?: string; type?: 'logbook' | 'insurance' | 'id' } | null>(null);
   const [notifPrefs, setNotifPrefs] = useState({
     status_updates: true,
     payment_reminders: true,
@@ -57,6 +59,33 @@ export default function ProfileScreen() {
     setLoadingDocs(false);
   };
 
+  const triggerDocUpload = (key: string, vehicleId?: string, type?: 'logbook' | 'insurance' | 'id') => {
+    pendingUploadRef.current = { key, vehicleId, type };
+    docUploadInputRef.current?.click();
+  };
+
+  const handleDocFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const pending = pendingUploadRef.current;
+    e.target.value = '';
+    if (!file || !pending) return;
+    setUploadingDocKey(pending.key);
+    try {
+      if (pending.type === 'id') {
+        await documents.uploadClientId(file);
+        await refreshProfile();
+      } else if (pending.vehicleId && pending.type) {
+        await documents.uploadVehicleDoc(pending.vehicleId, pending.type, file);
+      }
+      toast({ title: 'Document uploaded' });
+      await openDocuments();
+    } catch {
+      toast({ title: 'Upload failed', variant: 'destructive' });
+    }
+    setUploadingDocKey(null);
+    pendingUploadRef.current = null;
+  };
+
   const handleNotifToggle = async (key: keyof typeof notifPrefs) => {
     const updated = { ...notifPrefs, [key]: !notifPrefs[key] };
     setNotifPrefs(updated);
@@ -73,7 +102,7 @@ export default function ProfileScreen() {
     if (passwordCooldown || !email) return;
     setPasswordCooldown(true);
     try {
-      await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/reset-password` });
+      await auth.resetPassword(email, `${window.location.origin}/reset-password`);
       toast({ title: 'Password reset email sent', description: `Check your inbox at ${email}` });
     } catch {
       toast({ title: 'Failed to send reset email', variant: 'destructive' });
@@ -137,6 +166,13 @@ export default function ProfileScreen() {
       </div>
 
       {/* My Documents */}
+      <input
+        ref={docUploadInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,application/pdf"
+        className="hidden"
+        onChange={handleDocFileSelected}
+      />
       <Sheet open={openSheet === 'documents'} onOpenChange={(o) => !o && setOpenSheet(null)}>
         <SheetContent side="bottom" className="rounded-t-2xl max-h-[85vh] overflow-y-auto">
           <SheetHeader className="mb-4">
@@ -152,13 +188,21 @@ export default function ProfileScreen() {
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Identity</p>
                 <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/50">
                   <span className="text-sm text-foreground">ID Document</span>
-                  {docUrls['id'] ? (
-                    <a href={docUrls['id']} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary text-xs font-medium">
-                      View <ExternalLink className="w-3 h-3" />
-                    </a>
-                  ) : (
-                    <span className="text-xs text-muted-foreground">Not uploaded</span>
-                  )}
+                  <div className="flex items-center gap-3">
+                    {docUrls['id'] && (
+                      <a href={docUrls['id']} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary text-xs font-medium">
+                        View <ExternalLink className="w-3 h-3" />
+                      </a>
+                    )}
+                    {uploadingDocKey === 'id' ? (
+                      <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                    ) : (
+                      <button onClick={() => triggerDocUpload('id', undefined, 'id')} className="flex items-center gap-1 text-primary text-xs font-medium hover:underline">
+                        <Upload className="w-3 h-3" />
+                        {docUrls['id'] ? 'Replace' : 'Upload'}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
               {vehicleList.map((v) => (
@@ -166,18 +210,26 @@ export default function ProfileScreen() {
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">{v.registration} — {v.make} {v.model}</p>
                   <div className="space-y-2">
                     {[
-                      { label: 'Logbook', key: `${v.id}_logbook` },
-                      { label: 'Insurance', key: `${v.id}_insurance` },
+                      { label: 'Logbook', key: `${v.id}_logbook`, type: 'logbook' as const },
+                      { label: 'Insurance', key: `${v.id}_insurance`, type: 'insurance' as const },
                     ].map((doc) => (
                       <div key={doc.key} className="flex items-center justify-between p-3 rounded-lg bg-secondary/50">
                         <span className="text-sm text-foreground">{doc.label}</span>
-                        {docUrls[doc.key] ? (
-                          <a href={docUrls[doc.key]} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary text-xs font-medium">
-                            View <ExternalLink className="w-3 h-3" />
-                          </a>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">Not uploaded</span>
-                        )}
+                        <div className="flex items-center gap-3">
+                          {docUrls[doc.key] && (
+                            <a href={docUrls[doc.key]} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary text-xs font-medium">
+                              View <ExternalLink className="w-3 h-3" />
+                            </a>
+                          )}
+                          {uploadingDocKey === doc.key ? (
+                            <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                          ) : (
+                            <button onClick={() => triggerDocUpload(doc.key, v.id, doc.type)} className="flex items-center gap-1 text-primary text-xs font-medium hover:underline">
+                              <Upload className="w-3 h-3" />
+                              {docUrls[doc.key] ? 'Replace' : 'Upload'}
+                            </button>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -196,7 +248,7 @@ export default function ProfileScreen() {
           </SheetHeader>
           <div className="space-y-4 pb-6">
             {([
-              { key: 'status_updates' as const, label: 'Incident status updates', description: 'Get notified when your incident status changes' },
+              { key: 'status_updates' as const, label: 'Service status updates', description: 'Get notified when your service job status changes' },
               { key: 'payment_reminders' as const, label: 'Payment reminders', description: 'Renewal reminders before your coverage expires' },
               { key: 'promotional' as const, label: 'Promotions & news', description: 'Occasional updates about Tinlip offers' },
             ]).map((item) => (

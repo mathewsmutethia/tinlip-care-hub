@@ -1,21 +1,22 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useApp } from '@/context/AppContext';
-import { vehicles, incidentService, incidents } from '@/lib/supabase';
+import { vehicles, incidentService, incidents, documents } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ArrowLeft, MapPin, Car, CheckCircle2, Loader2 } from 'lucide-react';
+import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
+import { ArrowLeft, MapPin, Car, CheckCircle2, Loader2, Camera, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 const incidentTypeOptions = [
-  { id: 'regular_service', label: 'Regular Service', description: 'Scheduled maintenance', icon: '🔧' },
-  { id: 'roadside_assistance', label: 'Roadside Assistance', description: 'Jump start, flat tire, lockout', icon: '🚗' },
-  { id: 'towing', label: 'Towing', description: 'Vehicle breakdown recovery', icon: '🚜' },
-  { id: 'mechanical_diagnosis', label: 'Mechanical Diagnosis', description: 'Check engine, diagnostics', icon: '⚙️' },
-  { id: 'spares_request', label: 'Spares Request', description: 'Request replacement parts', icon: '🔩' },
+  { id: 'regular_service', label: 'Regular Service', description: 'Scheduled maintenance', icon: '🔧', price: 'KES 2,500 – 5,000' },
+  { id: 'roadside_assistance', label: 'Roadside Assistance', description: 'Jump start, flat tire, lockout', icon: '🚗', price: 'KES 500 – 1,500' },
+  { id: 'towing', label: 'Towing', description: 'Vehicle breakdown recovery', icon: '🚜', price: 'KES 1,500 – 3,000' },
+  { id: 'mechanical_diagnosis', label: 'Mechanical Diagnosis', description: 'Check engine, diagnostics', icon: '⚙️', price: 'KES 1,000 – 2,500' },
+  { id: 'spares_request', label: 'Spares Request', description: 'Request replacement parts', icon: '🔩', price: 'Quote on inspection' },
 ];
 
 export default function NewIncidentScreen() {
-  const { navigate } = useApp();
+  const { navigate, selectIncident } = useApp();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [gpsLoading, setGpsLoading] = useState(false);
@@ -29,6 +30,10 @@ export default function NewIncidentScreen() {
   const [description, setDescription] = useState('');
   const [location, setLocation] = useState('');
   const [mileage, setMileage] = useState('');
+
+  const [photos, setPhotos] = useState<File[]>([]);
+  const [photoPreviewUrls, setPhotoPreviewUrls] = useState<string[]>([]);
+  const photoInputRef = useRef<HTMLInputElement>(null);
 
   const [otp, setOtp] = useState('');
   const [otpToken, setOtpToken] = useState('');
@@ -44,7 +49,7 @@ export default function NewIncidentScreen() {
         vehicles.list(),
         incidents.list(),
       ]);
-      const active = vData?.filter((v: any) => v.status === 'active') || [];
+      const active = vData?.filter((v: any) => ['active', 'approved'].includes(v.status)) || [];
       setVehicleList(active);
       const activeVehicleIds = new Set(
         (iData ?? [])
@@ -100,12 +105,15 @@ export default function NewIncidentScreen() {
 
   const extractFunctionError = async (e: any, fallback: string): Promise<string> => {
     try {
-      if (e?.context?.json) {
-        const body = await e.context.json();
+      if (e?.context?.error) return e.context.error;
+      if (typeof e?.context?.clone === 'function') {
+        const body = await e.context.clone().json().catch(() => null);
         if (body?.error) return body.error;
       }
-    } catch {}
-    return e?.message || fallback;
+    } catch {
+      // ignore — fall through to fallback
+    }
+    return fallback;
   };
 
   const handleStart = async () => {
@@ -127,6 +135,26 @@ export default function NewIncidentScreen() {
     setLoading(false);
   };
 
+  const handleAddPhotos = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    const remaining = 3 - photos.length;
+    const MAX = 10 * 1024 * 1024;
+    const valid = files.filter(f => {
+      if (f.size > MAX) { toast.error(`${f.name} is too large (max 10 MB)`); return false; }
+      return true;
+    });
+    const toAdd = valid.slice(0, remaining);
+    setPhotos(prev => [...prev, ...toAdd]);
+    setPhotoPreviewUrls(prev => [...prev, ...toAdd.map(f => URL.createObjectURL(f))]);
+    if (photoInputRef.current) photoInputRef.current.value = '';
+  };
+
+  const handleRemovePhoto = (index: number) => {
+    URL.revokeObjectURL(photoPreviewUrls[index]);
+    setPhotos(prev => prev.filter((_, i) => i !== index));
+    setPhotoPreviewUrls(prev => prev.filter((_, i) => i !== index));
+  };
+
   const handleVerify = async () => {
     if (otp.length !== 6) {
       setError('Please enter the 6-digit code');
@@ -144,6 +172,13 @@ export default function NewIncidentScreen() {
         location,
         mileage: mileage ? Number(mileage) : undefined,
       });
+      // Upload photos in background — don't block on failure
+      if (photos.length > 0 && result.incident_id) {
+        photos.forEach(photo => {
+          documents.uploadIncidentPhoto(result.incident_id, photo).catch(() => {});
+        });
+      }
+      if (result.incident_id) selectIncident(result.incident_id);
       setClaimCode(result.claim_code);
       setConfirmed(true);
     } catch (e: any) {
@@ -159,13 +194,13 @@ export default function NewIncidentScreen() {
         <div className="w-20 h-20 rounded-full bg-success/10 flex items-center justify-center mb-6 animate-scale-in">
           <CheckCircle2 className="w-12 h-12 text-success" />
         </div>
-        <h1 className="text-2xl font-bold text-foreground mb-2 text-center">Incident Created Successfully</h1>
-        <p className="text-sm text-muted-foreground text-center mb-4">Save this reference number — share it with our team</p>
+        <h1 className="text-2xl font-bold text-foreground mb-2 text-center">Service Requested!</h1>
+        <p className="text-sm text-muted-foreground text-center mb-4">Save your reference number — share it with our team</p>
         <div className="bg-primary/10 rounded-xl px-6 py-3 mb-6">
           <span className="font-mono text-xl font-bold text-primary">{claimCode}</span>
         </div>
         <div className="w-full max-w-xs space-y-3">
-          <Button variant="amber" size="full" onClick={() => navigate('incident-detail')}>View Incident</Button>
+          <Button variant="amber" size="full" onClick={() => navigate('incident-detail')}>View Service</Button>
           <Button variant="outline" size="full" onClick={() => navigate('home')}>Go Home</Button>
         </div>
       </div>
@@ -178,7 +213,7 @@ export default function NewIncidentScreen() {
         <button onClick={() => step > 1 ? setStep(step - 1) : navigate('incidents')} className="p-2 -ml-2 text-muted-foreground">
           <ArrowLeft className="w-5 h-5" />
         </button>
-        <h1 className="text-lg font-semibold text-foreground">New Incident</h1>
+        <h1 className="text-lg font-semibold text-foreground">Request Service</h1>
       </div>
 
       {error && (
@@ -224,7 +259,7 @@ export default function NewIncidentScreen() {
                         <p className="text-sm text-muted-foreground">{v.make} {v.model} · {v.year}</p>
                       </div>
                       {hasActive && (
-                        <span className="text-xs font-medium text-warning bg-warning/10 px-2 py-0.5 rounded-full">Active incident</span>
+                        <span className="text-xs font-medium text-warning bg-warning/10 px-2 py-0.5 rounded-full">Active job</span>
                       )}
                     </div>
                   </button>
@@ -235,8 +270,8 @@ export default function NewIncidentScreen() {
 
           {step === 2 && (
             <div className="space-y-3">
-              <h2 className="text-xl font-bold text-foreground mb-1">Incident Type</h2>
-              <p className="text-sm text-muted-foreground mb-4">What kind of help do you need?</p>
+              <h2 className="text-xl font-bold text-foreground mb-1">What do you need?</h2>
+              <p className="text-sm text-muted-foreground mb-4">Select the type of service</p>
               {incidentTypeOptions.map((opt) => (
                 <button
                   key={opt.id}
@@ -244,12 +279,16 @@ export default function NewIncidentScreen() {
                   className={`w-full bg-card border-2 rounded-xl p-4 text-left transition-colors flex items-center gap-4 ${selectedType === opt.id ? 'border-primary' : 'border-border hover:border-primary/50'}`}
                 >
                   <span className="text-2xl">{opt.icon}</span>
-                  <div>
+                  <div className="flex-1">
                     <p className="font-semibold text-foreground">{opt.label}</p>
                     <p className="text-xs text-muted-foreground">{opt.description}</p>
                   </div>
+                  <span className="text-xs font-medium text-primary bg-primary/10 px-2 py-1 rounded-lg whitespace-nowrap">
+                    {opt.price}
+                  </span>
                 </button>
               ))}
+              <p className="text-xs text-muted-foreground text-center pt-1">Final price confirmed before work begins</p>
             </div>
           )}
 
@@ -283,6 +322,67 @@ export default function NewIncidentScreen() {
                 <label className="text-sm font-medium text-foreground">Current Mileage <span className="text-muted-foreground">(optional)</span></label>
                 <Input type="number" value={mileage} onChange={(e) => setMileage(e.target.value)} placeholder="e.g. 67500" className="h-12" />
               </div>
+
+              {/* Photo capture */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium text-foreground">Photos <span className="text-muted-foreground">(optional, max 3)</span></label>
+                  {photos.length < 3 && (
+                    <button
+                      type="button"
+                      onClick={() => photoInputRef.current?.click()}
+                      className="flex items-center gap-1.5 text-xs font-medium text-primary"
+                    >
+                      <Camera className="w-3.5 h-3.5" /> Add Photo
+                    </button>
+                  )}
+                </div>
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  capture="environment"
+                  multiple
+                  className="hidden"
+                  onChange={handleAddPhotos}
+                />
+                {photoPreviewUrls.length > 0 && (
+                  <div className="flex gap-2 flex-wrap">
+                    {photoPreviewUrls.map((url, i) => (
+                      <div key={i} className="relative w-20 h-20 rounded-lg overflow-hidden border">
+                        <img src={url} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => handleRemovePhoto(i)}
+                          className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 flex items-center justify-center"
+                        >
+                          <X className="w-3 h-3 text-white" />
+                        </button>
+                      </div>
+                    ))}
+                    {photos.length < 3 && (
+                      <button
+                        type="button"
+                        onClick={() => photoInputRef.current?.click()}
+                        className="w-20 h-20 rounded-lg border-2 border-dashed border-border flex items-center justify-center"
+                      >
+                        <Camera className="w-6 h-6 text-muted-foreground" />
+                      </button>
+                    )}
+                  </div>
+                )}
+                {photoPreviewUrls.length === 0 && (
+                  <button
+                    type="button"
+                    onClick={() => photoInputRef.current?.click()}
+                    className="w-full h-20 rounded-lg border-2 border-dashed border-border flex items-center justify-center gap-2 text-muted-foreground hover:border-primary/50 transition-colors"
+                  >
+                    <Camera className="w-5 h-5" />
+                    <span className="text-sm">Tap to add a photo of the issue</span>
+                  </button>
+                )}
+              </div>
+
               <Button variant="amber" size="full" onClick={handleStart} disabled={loading}>
                 {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Continue'}
               </Button>
@@ -297,39 +397,18 @@ export default function NewIncidentScreen() {
               <h2 className="text-xl font-bold text-foreground mb-2">Verify Your Identity</h2>
               <p className="text-sm text-muted-foreground mb-8">{otpMessage || 'Enter the 6-digit code sent to your phone'}</p>
 
-              <div className="flex justify-center gap-2 mb-6">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <div
-                    key={i}
-                    className={`w-12 h-14 rounded-lg border-2 flex items-center justify-center text-xl font-bold font-mono transition-colors ${
-                      otp[i] ? 'border-primary bg-primary/5 text-foreground' : 'border-border text-muted-foreground'
-                    }`}
-                  >
-                    {otp[i] || ''}
-                  </div>
-                ))}
+              <div className="flex justify-center mb-8">
+                <InputOTP maxLength={6} value={otp} onChange={setOtp} autoFocus>
+                  <InputOTPGroup>
+                    <InputOTPSlot index={0} />
+                    <InputOTPSlot index={1} />
+                    <InputOTPSlot index={2} />
+                    <InputOTPSlot index={3} />
+                    <InputOTPSlot index={4} />
+                    <InputOTPSlot index={5} />
+                  </InputOTPGroup>
+                </InputOTP>
               </div>
-
-              <input
-                type="tel"
-                value={otp}
-                onChange={(e) => {
-                  const cleaned = e.target.value.replace(/\D/g, '').slice(0, 6);
-                  setOtp(cleaned);
-                }}
-                className="absolute opacity-0 pointer-events-none"
-                autoFocus
-              />
-
-              <button
-                onClick={() => {
-                  const inp = document.querySelector('input[type="tel"]') as HTMLInputElement;
-                  inp?.focus();
-                }}
-                className="text-sm text-primary font-medium mb-4"
-              >
-                Tap here to enter code
-              </button>
 
               <Button
                 variant="amber"
@@ -337,7 +416,7 @@ export default function NewIncidentScreen() {
                 onClick={handleVerify}
                 disabled={loading || otp.length !== 6}
               >
-                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Verify & Create Incident'}
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Verify & Submit'}
               </Button>
             </div>
           )}
