@@ -159,7 +159,7 @@ export const incidentService = {
     const { data, error } = await supabase.functions.invoke('create-incident', {
       body: { action: 'request_otp' },
     });
-    if (error) throw error;
+    if (error) throw new Error(data?.error ?? error.message);
     return data as { success: boolean; otp_token: string; message: string };
   },
 
@@ -175,7 +175,7 @@ export const incidentService = {
     const { data, error } = await supabase.functions.invoke('create-incident', {
       body: { action: 'verify_and_create', ...params },
     });
-    if (error) throw error;
+    if (error) throw new Error(data?.error ?? error.message);
     return data as { success: boolean; claim_code: string; incident_id: string };
   },
 };

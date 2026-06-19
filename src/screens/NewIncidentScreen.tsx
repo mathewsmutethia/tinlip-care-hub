@@ -132,9 +132,9 @@ export default function NewIncidentScreen() {
         if (body?.error) return body.error;
       }
     } catch {
-      // ignore — fall through to fallback
+      // ignore
     }
-    return fallback;
+    return e?.message || fallback;
   };
 
   const handleStart = async () => {
