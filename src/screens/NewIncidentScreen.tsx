@@ -34,6 +34,7 @@ export default function NewIncidentScreen() {
   const [photos, setPhotos] = useState<File[]>([]);
   const [photoPreviewUrls, setPhotoPreviewUrls] = useState<string[]>([]);
   const photoInputRef = useRef<HTMLInputElement>(null);
+  const photoUrlsRef = useRef<string[]>([]);
 
   const [otp, setOtp] = useState('');
   const [otpToken, setOtpToken] = useState('');
@@ -42,6 +43,12 @@ export default function NewIncidentScreen() {
   const [confirmed, setConfirmed] = useState(false);
 
   useEffect(() => { loadVehicles(); }, []);
+
+  useEffect(() => { photoUrlsRef.current = photoPreviewUrls; }, [photoPreviewUrls]);
+
+  useEffect(() => {
+    return () => { photoUrlsRef.current.forEach(url => URL.revokeObjectURL(url)); };
+  }, []);
 
   useEffect(() => {
     const raw = sessionStorage.getItem('tinlip_quickstart');
@@ -154,7 +161,7 @@ export default function NewIncidentScreen() {
     const remaining = 3 - photos.length;
     const MAX = 10 * 1024 * 1024;
     const valid = files.filter(f => {
-      if (f.size > MAX) { toast.error(`${f.name} is too large (max 10 MB)`); return false; }
+      if (f.size > MAX) { toast({ title: `${f.name} is too large (max 10 MB)`, variant: 'destructive' }); return false; }
       return true;
     });
     const toAdd = valid.slice(0, remaining);
@@ -224,7 +231,7 @@ export default function NewIncidentScreen() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <div className="px-4 pt-4 pb-2 flex items-center gap-3">
-        <button onClick={() => step > 1 ? setStep(step - 1) : navigate('incidents')} className="p-2 -ml-2 text-muted-foreground">
+        <button onClick={() => { setError(''); step > 1 ? setStep(step - 1) : navigate('incidents'); }} className="p-2 -ml-2 text-muted-foreground">
           <ArrowLeft className="w-5 h-5" />
         </button>
         <h1 className="text-lg font-semibold text-foreground">Request Service</h1>
@@ -261,7 +268,7 @@ export default function NewIncidentScreen() {
                 return (
                   <button
                     key={v.id}
-                    onClick={() => { setSelectedVehicle(v.id); setStep(2); }}
+                    onClick={() => { setError(''); setSelectedVehicle(v.id); setStep(2); }}
                     className={`w-full bg-card border-2 rounded-xl p-4 text-left transition-colors ${selectedVehicle === v.id ? 'border-primary' : 'border-border hover:border-primary/50'}`}
                   >
                     <div className="flex items-center gap-3">
@@ -289,7 +296,7 @@ export default function NewIncidentScreen() {
               {incidentTypeOptions.map((opt) => (
                 <button
                   key={opt.id}
-                  onClick={() => { setSelectedType(opt.id); setStep(3); }}
+                  onClick={() => { setError(''); setSelectedType(opt.id); setStep(3); }}
                   className={`w-full bg-card border-2 rounded-xl p-4 text-left transition-colors flex items-center gap-4 ${selectedType === opt.id ? 'border-primary' : 'border-border hover:border-primary/50'}`}
                 >
                   <span className="text-2xl">{opt.icon}</span>
@@ -334,7 +341,7 @@ export default function NewIncidentScreen() {
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-foreground">Current Mileage <span className="text-muted-foreground">(optional)</span></label>
-                <Input type="number" value={mileage} onChange={(e) => setMileage(e.target.value)} placeholder="e.g. 67500" className="h-12" />
+                <Input type="number" min="0" max="999999" value={mileage} onChange={(e) => setMileage(e.target.value)} placeholder="e.g. 67500" className="h-12" />
               </div>
 
               {/* Photo capture */}
@@ -422,6 +429,10 @@ export default function NewIncidentScreen() {
                     <InputOTPSlot index={5} />
                   </InputOTPGroup>
                 </InputOTP>
+              </div>
+
+              <div className="w-full mb-4 bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800 dark:bg-amber-950/20 dark:border-amber-800/30 dark:text-amber-200 text-left">
+                <strong>Important:</strong> Do not authorise any repairs before calling +254-714-927-488. No claims will be paid without prior authorisation from Tinlip.
               </div>
 
               <Button

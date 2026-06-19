@@ -118,7 +118,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setIsAuthenticated(!!currentUser);
       if (currentUser) {
         fetchProfile(currentUser.id);
-        if (currentUser.email_confirmed_at) {
+        // If this is a password recovery link, onAuthStateChange already set the screen.
+        // Don't override it here.
+        const isRecovery = window.location.hash.includes('type=recovery');
+        if (isRecovery) {
+          setScreen('reset-password');
+        } else if (currentUser.email_confirmed_at) {
           // Restore the screen the user was on before the reload, or fall back to home.
           const saved = sessionStorage.getItem(SK_SCREEN) as AppScreen | null;
           setScreen(saved && AUTHENTICATED_SCREENS.has(saved) ? saved : 'home');

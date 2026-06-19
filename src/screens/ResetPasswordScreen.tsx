@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useApp } from '@/context/AppContext';
-import { supabase } from '@/integrations/supabase/client';
+import { auth } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { CheckCircle2 } from 'lucide-react';
@@ -23,13 +23,13 @@ export default function ResetPasswordScreen() {
       return;
     }
     setLoading(true);
-    const { error } = await supabase.auth.updateUser({ password });
+    const { error } = await auth.updatePassword(password);
     setLoading(false);
     if (error) {
       toast.error(error.message);
     } else {
       setDone(true);
-      setTimeout(() => navigate('home'), 2000);
+      setTimeout(() => navigate('sign-in'), 2000);
     }
   };
 
@@ -43,13 +43,10 @@ export default function ResetPasswordScreen() {
           <div className="text-center animate-fade-in">
             <CheckCircle2 className="w-16 h-16 text-success mx-auto mb-4" />
             <p className="text-foreground font-semibold">Password updated</p>
-            <p className="text-muted-foreground text-sm mt-1">Taking you home...</p>
+            <p className="text-muted-foreground text-sm mt-1">Taking you to sign in...</p>
           </div>
         ) : (
-          <form
-            onSubmit={(e) => { e.preventDefault(); handleReset(); }}
-            className="space-y-4"
-          >
+          <form onSubmit={(e) => { e.preventDefault(); handleReset(); }} className="space-y-4">
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">New Password</label>
               <Input

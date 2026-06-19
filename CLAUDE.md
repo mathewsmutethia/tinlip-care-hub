@@ -17,6 +17,8 @@ Revenue-blocking features first: M-Pesa → add vehicle flow → UX gaps → pol
 ## Voice
 Short sentences. No filler. No "great question". Flag problems plainly and immediately.
 
+Compact at 60% context
+
 ## Non-negotiable rules
 - 95% confident before building. Ask until there.
 - For major changes (new tables, schema edits, new edge functions, architectural shifts): always ask first, never assume.

@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { useApp } from '@/context/AppContext';
-import { supabase } from '@/integrations/supabase/client';
+import { auth } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ArrowLeft, Eye, EyeOff, Shield } from 'lucide-react';
 import { toast } from 'sonner';
 
 const AGREEMENT_PDF_URL =
-  'https://xpjqgcuywecqhkddncjq.supabase.co/storage/v1/object/public/public-assets/tinlip-service-agreement.pdf';
+  `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/public-assets/tinlip-service-agreement.pdf`;
 
 function getPasswordStrength(password: string): { score: number; label: string } {
   if (!password) return { score: 0, label: '' };
@@ -51,20 +51,20 @@ export default function RegisterScreen() {
       toast.error('Please fill in all fields');
       return;
     }
+    if (!agreed) {
+      toast.error('Please agree to the Service Agreement to continue');
+      return;
+    }
     if (password !== confirm) {
       toast.error('Passwords do not match');
       return;
     }
-    if (password.length < 6) {
-      toast.error('Password must be at least 6 characters');
+    if (password.length < 8) {
+      toast.error('Password must be at least 8 characters');
       return;
     }
     setLoading(true);
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { emailRedirectTo: window.location.origin },
-    });
+    const { error } = await auth.signUp(email, password);
     setLoading(false);
     if (error) {
       toast.error(error.message);
@@ -79,10 +79,7 @@ export default function RegisterScreen() {
       toast.error('Please agree to the Service Agreement to continue');
       return;
     }
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: window.location.origin },
-    });
+    const { error } = await auth.signInGoogle();
     if (error) toast.error(error.message);
   };
 
@@ -207,7 +204,7 @@ export default function RegisterScreen() {
                 >
                   Tinlip Service Agreement
                 </button>{' '}
-                — <span className="text-success text-xs font-medium">cancel anytime</span>
+                — <span className="text-muted-foreground text-xs">subject to cancellation terms</span>
               </span>
             </label>
 

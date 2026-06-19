@@ -106,7 +106,17 @@ Deno.serve(async (req) => {
     const { action } = body
 
     if (action === 'request_otp') {
-      // Redis rate limit check — fast, protects SMS/email credits before hitting the DB
+      // Reject immediately if no active coverage — don't burn OTP quota
+      const { data: coverageCheck } = await adminClient.from('coverage')
+        .select('id')
+        .eq('client_id', user.id)
+        .eq('status', 'active')
+        .maybeSingle()
+      if (!coverageCheck) {
+        return jsonResponse({ error: 'No active coverage. Please activate your plan before requesting service.' }, 403, corsHeaders)
+      }
+
+      // Redis rate limit check — fast, protects email credits before hitting the DB
       const { limited } = await checkRedisRateLimit(user.id)
       if (limited) {
         return jsonResponse({ error: 'Please wait before requesting another OTP' }, 429, corsHeaders)
@@ -185,6 +195,13 @@ Deno.serve(async (req) => {
         return jsonResponse({ error: 'Missing required fields' }, 400, corsHeaders)
       }
 
+      if (typeof otp_token !== 'string' || otp_token.length > 100) {
+        return jsonResponse({ error: 'Invalid request' }, 400, corsHeaders)
+      }
+      if (typeof otp_code !== 'string' || !/^\d{6}$/.test(otp_code)) {
+        return jsonResponse({ error: 'Invalid OTP format' }, 400, corsHeaders)
+      }
+
       const VALID_INCIDENT_TYPES = ['regular_service', 'roadside_assistance', 'towing', 'mechanical_diagnosis', 'spares_request']
 
       if (
@@ -222,6 +239,17 @@ Deno.serve(async (req) => {
       if (status === 'locked') return jsonResponse({ error: 'Too many failed attempts. Request a new OTP.' }, 429, corsHeaders)
       if (status === 'wrong_code') return jsonResponse({ error: 'Invalid OTP code' }, 400, corsHeaders)
       if (status !== 'valid') return jsonResponse({ error: 'OTP verification failed' }, 400, corsHeaders)
+
+      // Verify active coverage before creating incident
+      const { data: coverage } = await adminClient.from('coverage')
+        .select('id')
+        .eq('client_id', user.id)
+        .eq('status', 'active')
+        .maybeSingle()
+
+      if (!coverage) {
+        return jsonResponse({ error: 'No active coverage. Please activate your plan before requesting service.' }, 403, corsHeaders)
+      }
 
       // Verify vehicle belongs to user
       const { data: vehicle } = await adminClient.from('vehicles')

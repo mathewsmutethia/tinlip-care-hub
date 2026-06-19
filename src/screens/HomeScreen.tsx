@@ -62,7 +62,7 @@ export default function HomeScreen() {
         vehicles.list(),
         incidents.list(),
       ]);
-      setVehicleCount(vehiclesRes.data?.length || 0);
+      setVehicleCount(vehiclesRes.data?.filter((v: any) => ['active', 'approved'].includes(v.status)).length || 0);
       setIncidentCount(incidentsRes.data?.length || 0);
       const active = (incidentsRes.data ?? []).find(
         (i: any) => i.status !== 'closed' && i.status !== 'resolved',
@@ -226,7 +226,7 @@ export default function HomeScreen() {
             </p>
           </div>
           <div className="bg-card border rounded-xl p-4">
-            <p className="text-sm text-muted-foreground">Services Done</p>
+            <p className="text-sm text-muted-foreground">Services Requested</p>
             <p className="text-2xl font-bold text-foreground mt-0.5">
               {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : incidentCount}
             </p>

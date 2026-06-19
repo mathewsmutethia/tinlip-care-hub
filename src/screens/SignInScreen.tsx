@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useApp } from '@/context/AppContext';
-import { supabase } from '@/integrations/supabase/client';
+import { auth } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ArrowLeft, Eye, EyeOff, Shield } from 'lucide-react';
@@ -19,7 +19,7 @@ export default function SignInScreen() {
       return;
     }
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error } = await auth.signIn(email, password);
     setLoading(false);
     if (error) {
       toast.error(error.message);
@@ -28,10 +28,7 @@ export default function SignInScreen() {
   };
 
   const handleGoogleSignIn = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: window.location.origin },
-    });
+    const { error } = await auth.signInGoogle();
     if (error) toast.error(error.message);
   };
 

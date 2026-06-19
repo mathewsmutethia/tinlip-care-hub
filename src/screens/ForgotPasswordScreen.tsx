@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useApp } from '@/context/AppContext';
-import { supabase } from '@/integrations/supabase/client';
+import { auth } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ArrowLeft, CheckCircle2 } from 'lucide-react';
@@ -18,9 +18,7 @@ export default function ForgotPasswordScreen() {
       return;
     }
     setLoading(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
-    });
+    const { error } = await auth.resetPassword(email, window.location.origin);
     setLoading(false);
     if (error) {
       toast.error(error.message);

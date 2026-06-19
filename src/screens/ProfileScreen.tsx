@@ -44,14 +44,16 @@ export default function ProfileScreen() {
       const { data: vList } = await vehicles.list();
       setVehicleList(vList ?? []);
 
+      const tasks: Promise<void>[] = [];
       const urls: Record<string, string> = {};
       if (profile?.id_document_url) {
-        urls['id'] = await documents.getSignedUrl(profile.id_document_url);
+        tasks.push(documents.getSignedUrl(profile.id_document_url).then(u => { urls['id'] = u; }));
       }
       for (const v of (vList ?? [])) {
-        if (v.logbook_url) urls[`${v.id}_logbook`] = await documents.getSignedUrl(v.logbook_url);
-        if (v.insurance_url) urls[`${v.id}_insurance`] = await documents.getSignedUrl(v.insurance_url);
+        if (v.logbook_url) tasks.push(documents.getSignedUrl(v.logbook_url).then(u => { urls[`${v.id}_logbook`] = u; }));
+        if (v.insurance_url) tasks.push(documents.getSignedUrl(v.insurance_url).then(u => { urls[`${v.id}_insurance`] = u; }));
       }
+      await Promise.allSettled(tasks);
       setDocUrls(urls);
     } catch {
       toast({ title: 'Could not load documents', variant: 'destructive' });
@@ -289,10 +291,11 @@ export default function ProfileScreen() {
             <div>
               <h3 className="font-semibold text-foreground mb-1">Payment</h3>
               <p>Annual premium is paid via M-Pesa. Coverage activates only on successful payment confirmation. No partial payments.</p>
+              <p className="mt-2">A KES 1,000 deductible applies per covered repair. Maximum liability is three times your annual premium. No repairs will be reimbursed without prior authorisation.</p>
             </div>
             <div>
               <h3 className="font-semibold text-foreground mb-1">Privacy</h3>
-              <p>Your personal data and vehicle information is stored securely and used solely for service delivery. We do not sell your data to third parties.</p>
+              <p>Your personal data and vehicle information is stored securely and used solely for service delivery. We do not sell your data. We may share it with affiliates and authorised service partners as permitted under Kenya law.</p>
             </div>
             <div className="pt-2 border-t">
               <p className="text-xs text-muted-foreground">For the full legal agreement visit <span className="text-primary">www.tinlipautocare.co.ke</span></p>
@@ -323,7 +326,7 @@ export default function ProfileScreen() {
               <ExternalLink className="w-4 h-4 text-muted-foreground ml-auto" />
             </a>
             <a
-              href="tel:+254700000000"
+              href="tel:+254714927488"
               className="flex items-center gap-3 p-4 rounded-xl bg-secondary/50 hover:bg-secondary transition-colors"
             >
               <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
@@ -331,7 +334,7 @@ export default function ProfileScreen() {
               </div>
               <div>
                 <p className="text-sm font-medium text-foreground">Phone Support</p>
-                <p className="text-xs text-muted-foreground">+254 700 000 000</p>
+                <p className="text-xs text-muted-foreground">+254 714 927 488</p>
               </div>
             </a>
             <div className="pt-2 border-t">

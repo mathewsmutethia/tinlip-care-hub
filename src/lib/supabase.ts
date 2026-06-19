@@ -18,7 +18,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 // ============================================
 export const auth = {
   signUp: (email: string, password: string) =>
-    supabase.auth.signUp({ email, password }),
+    supabase.auth.signUp({ email, password, options: { emailRedirectTo: window.location.origin } }),
 
   signIn: (email: string, password: string) =>
     supabase.auth.signInWithPassword({ email, password }),
@@ -35,6 +35,9 @@ export const auth = {
 
   resetPassword: (email: string, redirectTo: string) =>
     supabase.auth.resetPasswordForEmail(email, { redirectTo }),
+
+  updatePassword: (password: string) =>
+    supabase.auth.updateUser({ password }),
 };
 
 // ============================================
@@ -44,6 +47,11 @@ export const clientProfile = {
   save: async (data: { name: string; phone: string; company_name?: string; address?: string; id_number?: string }) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
+
+    const { data: existing } = await supabase.from('clients').select('status').eq('id', user.id).maybeSingle();
+    if (existing?.status && existing.status !== 'profile_incomplete') {
+      throw new Error('Profile already submitted for approval');
+    }
 
     return supabase.from('clients').upsert({
       id: user.id,
@@ -224,6 +232,10 @@ export const incidents = {
   }) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
+
+    const { data: current } = await supabase.from('incidents').select('status').eq('id', incidentId).eq('client_id', user.id).single();
+    if (!current) throw new Error('Incident not found');
+    if (current.status !== 'completed') throw new Error('Service must be completed before submitting feedback');
 
     // M4: validate rating ranges server-side before insert
     const validRating = (n: number) => Number.isInteger(n) && n >= 1 && n <= 5;

@@ -9,7 +9,7 @@ import {
 import { clientProfile, vehicles, documents } from '@/lib/supabase';
 
 const AGREEMENT_PDF_URL =
-  'https://xpjqgcuywecqhkddncjq.supabase.co/storage/v1/object/public/public-assets/tinlip-service-agreement.pdf';
+  `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/public-assets/tinlip-service-agreement.pdf`;
 
 const CAR_MAKES = [
   'Toyota', 'Subaru', 'Nissan', 'Mitsubishi', 'Honda', 'Mazda',
@@ -61,7 +61,7 @@ const CONFETTI_PIECES = Array.from({ length: 22 }, (_, i) => ({
 
 const BENEFITS = [
   { icon: Zap,   label: 'Roadside Rescue',  desc: 'Help dispatched in minutes', delay: '0.3s' },
-  { icon: Truck, label: 'Towing Covered',   desc: 'To any garage in Nairobi',   delay: '0.6s' },
+  { icon: Truck, label: 'Towing Covered',   desc: 'Up to 25 km from breakdown point', delay: '0.6s' },
   { icon: Clock, label: '24/7 Support',     desc: 'Always here when you need',  delay: '0.9s' },
 ];
 
@@ -705,7 +705,7 @@ export default function OnboardingScreen() {
                       >
                         Tinlip Service Agreement
                       </button>{' '}
-                      — <span className="text-success text-xs font-medium">cancel anytime</span>
+                      — <span className="text-muted-foreground text-xs">subject to cancellation terms</span>
                     </label>
                   </div>
                 )}
@@ -728,6 +728,7 @@ export default function OnboardingScreen() {
                         </div>
                       ))}
                     </div>
+                    <p className="text-xs text-muted-foreground mt-2.5">KES 1,000 deductible applies per covered repair.</p>
                   </div>
                 )}
 
