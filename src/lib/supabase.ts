@@ -154,12 +154,25 @@ export const quotes = {
 // ============================================
 // OTP & INCIDENT SERVICE (Server-side via Edge Function)
 // ============================================
+
+async function readFnError(error: any): Promise<string> {
+  try {
+    if (error?.context && typeof error.context.json === 'function') {
+      const body = await error.context.json();
+      if (body?.error) return body.error;
+    }
+  } catch {
+    // body already consumed or not JSON
+  }
+  return error?.message ?? 'Unknown error';
+}
+
 export const incidentService = {
   requestOtp: async () => {
     const { data, error } = await supabase.functions.invoke('create-incident', {
       body: { action: 'request_otp' },
     });
-    if (error) throw new Error(data?.error ?? error.message);
+    if (error) throw new Error(await readFnError(error));
     return data as { success: boolean; otp_token: string; message: string };
   },
 
@@ -175,7 +188,7 @@ export const incidentService = {
     const { data, error } = await supabase.functions.invoke('create-incident', {
       body: { action: 'verify_and_create', ...params },
     });
-    if (error) throw new Error(data?.error ?? error.message);
+    if (error) throw new Error(await readFnError(error));
     return data as { success: boolean; claim_code: string; incident_id: string };
   },
 };
