@@ -16,7 +16,11 @@ function getAllowedOrigins(): string[] {
 function getCorsHeaders(req: Request): Record<string, string> {
   const allowedOrigins = getAllowedOrigins()
   const origin = req.headers.get('Origin') ?? ''
-  const isLocalhost = origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1')
+  const isLocalhost =
+    origin === 'http://localhost' ||
+    /^http:\/\/localhost:\d+$/.test(origin) ||
+    origin === 'http://127.0.0.1' ||
+    /^http:\/\/127\.0\.0\.1:\d+$/.test(origin)
   const allowedOrigin = allowedOrigins.includes(origin) || isLocalhost ? origin : BASE_ALLOWED_ORIGINS[0]
   return {
     'Access-Control-Allow-Origin': allowedOrigin,
@@ -201,6 +205,9 @@ Deno.serve(async (req) => {
       }
       if (typeof otp_code !== 'string' || !/^\d{6}$/.test(otp_code)) {
         return jsonResponse({ error: 'Invalid OTP format' }, 400, corsHeaders)
+      }
+      if (typeof vehicle_id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(vehicle_id)) {
+        return jsonResponse({ error: 'Invalid vehicle_id' }, 400, corsHeaders)
       }
 
       const VALID_INCIDENT_TYPES = ['regular_service', 'roadside_assistance', 'towing', 'mechanical_diagnosis', 'spares_request']
