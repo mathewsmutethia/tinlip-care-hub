@@ -110,15 +110,23 @@ Deno.serve(async (req) => {
     const body = await req.json()
     const { action } = body
 
+    // Temporary debug — remove before go-live
+    if (action === 'debug_coverage') {
+      const { data: rows, error: dbgErr } = await adminClient.from('coverage')
+        .select('id, client_id, status, start_date, end_date')
+        .eq('client_id', user.id)
+      return jsonResponse({ user_id: user.id, coverage_rows: rows ?? [], db_error: dbgErr?.message ?? null }, 200, corsHeaders)
+    }
+
     if (action === 'request_otp') {
       // Reject immediately if no active coverage — don't burn OTP quota
-      const { data: coverageCheck } = await adminClient.from('coverage')
+      const { data: coverageCheck, error: coverageErr } = await adminClient.from('coverage')
         .select('id')
         .eq('client_id', user.id)
         .eq('status', 'active')
         .maybeSingle()
       if (!coverageCheck) {
-        return jsonResponse({ error: 'No active coverage. Please activate your plan before requesting service.' }, 403, corsHeaders)
+        return jsonResponse({ error: 'No active coverage. Please activate your plan before requesting service.', debug_user_id: user.id, debug_coverage_error: coverageErr?.message ?? null }, 403, corsHeaders)
       }
 
       // Redis rate limit check — fast, protects email credits before hitting the DB
