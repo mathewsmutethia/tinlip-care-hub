@@ -7,6 +7,8 @@ import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp
 import { ArrowLeft, MapPin, Car, CheckCircle2, Loader2, Camera, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
+const SK_DRAFT = 'tlp_incident_draft';
+
 const incidentTypeOptions = [
   { id: 'regular_service', label: 'Regular Service', description: 'Scheduled maintenance', icon: '🔧', price: 'KES 2,500 – 5,000' },
   { id: 'roadside_assistance', label: 'Roadside Assistance', description: 'Jump start, flat tire, lockout', icon: '🚗', price: 'KES 500 – 1,500' },
@@ -46,21 +48,52 @@ export default function NewIncidentScreen() {
 
   useEffect(() => { photoUrlsRef.current = photoPreviewUrls; }, [photoPreviewUrls]);
 
+  // Persist draft so a page reload (tab switch, iOS PWA kill) restores the exact step.
+  // otpToken/otpMessage are intentionally excluded — they expire in minutes and are useless
+  // after a reload; we restore step 4 as step 3 so the user re-requests a fresh OTP.
+  useEffect(() => {
+    if (!selectedVehicle) return; // Nothing worth saving yet
+    localStorage.setItem(SK_DRAFT, JSON.stringify({
+      step: step === 4 ? 3 : step, // cap at 3 — OTP must be re-requested
+      selectedVehicle, selectedType, description, location, mileage,
+    }));
+  }, [step, selectedVehicle, selectedType, description, location, mileage]);
+
   useEffect(() => {
     return () => { photoUrlsRef.current.forEach(url => URL.revokeObjectURL(url)); };
   }, []);
 
   useEffect(() => {
+    // Quickstart takes priority (fresh request from home screen).
     const raw = sessionStorage.getItem('tinlip_quickstart');
-    if (!raw) return;
-    sessionStorage.removeItem('tinlip_quickstart');
+    if (raw) {
+      sessionStorage.removeItem('tinlip_quickstart');
+      localStorage.removeItem(SK_DRAFT); // discard any stale draft
+      try {
+        const { vehicleId, type } = JSON.parse(raw);
+        if (vehicleId) setSelectedVehicle(vehicleId);
+        if (type) setSelectedType(type);
+        if (vehicleId && type) setStep(3);
+      } catch {
+        // malformed — ignore, start at step 1
+      }
+      return;
+    }
+
+    // Restore draft so users land back on the exact step after a tab switch / app kill.
+    const saved = localStorage.getItem(SK_DRAFT);
+    if (!saved) return;
     try {
-      const { vehicleId, type } = JSON.parse(raw);
-      if (vehicleId) setSelectedVehicle(vehicleId);
-      if (type) setSelectedType(type);
-      if (vehicleId && type) setStep(3);
+      const d = JSON.parse(saved);
+      if (d.step)            setStep(d.step);
+      if (d.selectedVehicle) setSelectedVehicle(d.selectedVehicle);
+      if (d.selectedType)    setSelectedType(d.selectedType);
+      if (d.description)     setDescription(d.description);
+      if (d.location)        setLocation(d.location);
+      if (d.mileage)         setMileage(d.mileage);
+      // otpToken/otpMessage are not persisted — OTP always expires; user re-requests on step 3
     } catch {
-      // malformed — ignore, start at step 1
+      localStorage.removeItem(SK_DRAFT);
     }
   }, []);
 
@@ -200,6 +233,7 @@ export default function NewIncidentScreen() {
         });
       }
       if (result.incident_id) selectIncident(result.incident_id);
+      localStorage.removeItem(SK_DRAFT);
       setClaimCode(result.claim_code);
       setConfirmed(true);
     } catch (e: any) {
@@ -231,7 +265,7 @@ export default function NewIncidentScreen() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <div className="px-4 pt-4 pb-2 flex items-center gap-3">
-        <button onClick={() => { setError(''); step > 1 ? setStep(step - 1) : navigate('incidents'); }} className="p-2 -ml-2 text-muted-foreground">
+        <button onClick={() => { setError(''); if (step > 1) { setStep(step - 1); } else { localStorage.removeItem(SK_DRAFT); navigate('incidents'); } }} className="p-2 -ml-2 text-muted-foreground">
           <ArrowLeft className="w-5 h-5" />
         </button>
         <h1 className="text-lg font-semibold text-foreground">Request Service</h1>

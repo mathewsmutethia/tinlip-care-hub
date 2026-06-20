@@ -60,10 +60,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(
-    sessionStorage.getItem(SK_VEHICLE),
+    localStorage.getItem(SK_VEHICLE),
   );
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(
-    sessionStorage.getItem(SK_INCIDENT),
+    localStorage.getItem(SK_INCIDENT),
   );
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<ClientProfile | null>(null);
@@ -101,7 +101,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (event === 'PASSWORD_RECOVERY') {
           setScreen('reset-password');
         } else if (event === 'SIGNED_IN') {
-          setScreen(currentUser.email_confirmed_at ? 'home' : 'email-verify');
+          // Only redirect if currently on a non-authenticated screen.
+          // SIGNED_IN also fires on token refresh (tab switch / app resume),
+          // so we must not boot the user from a mid-flow authenticated screen.
+          setScreen((current) =>
+            AUTHENTICATED_SCREENS.has(current)
+              ? current
+              : currentUser.email_confirmed_at ? 'home' : 'email-verify',
+          );
         }
       } else {
         setProfile(null);
@@ -125,7 +132,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setScreen('reset-password');
         } else if (currentUser.email_confirmed_at) {
           // Restore the screen the user was on before the reload, or fall back to home.
-          const saved = sessionStorage.getItem(SK_SCREEN) as AppScreen | null;
+          const saved = localStorage.getItem(SK_SCREEN) as AppScreen | null;
           setScreen(saved && AUTHENTICATED_SCREENS.has(saved) ? saved : 'home');
         } else {
           setScreen('email-verify');
@@ -140,32 +147,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const navigate = (s: AppScreen) => {
     setScreen(s);
     if (AUTHENTICATED_SCREENS.has(s)) {
-      sessionStorage.setItem(SK_SCREEN, s);
+      localStorage.setItem(SK_SCREEN, s);
     } else {
       // Leaving authenticated space — clear all persisted nav state.
-      sessionStorage.removeItem(SK_SCREEN);
-      sessionStorage.removeItem(SK_VEHICLE);
-      sessionStorage.removeItem(SK_INCIDENT);
+      localStorage.removeItem(SK_SCREEN);
+      localStorage.removeItem(SK_VEHICLE);
+      localStorage.removeItem(SK_INCIDENT);
     }
   };
 
   const selectVehicle = (id: string | null) => {
     setSelectedVehicleId(id);
-    if (id) sessionStorage.setItem(SK_VEHICLE, id);
-    else sessionStorage.removeItem(SK_VEHICLE);
+    if (id) localStorage.setItem(SK_VEHICLE, id);
+    else localStorage.removeItem(SK_VEHICLE);
   };
 
   const selectIncident = (id: string | null) => {
     setSelectedIncidentId(id);
-    if (id) sessionStorage.setItem(SK_INCIDENT, id);
-    else sessionStorage.removeItem(SK_INCIDENT);
+    if (id) localStorage.setItem(SK_INCIDENT, id);
+    else localStorage.removeItem(SK_INCIDENT);
   };
 
   const logout = async () => {
     await supabase.auth.signOut();
-    sessionStorage.removeItem(SK_SCREEN);
-    sessionStorage.removeItem(SK_VEHICLE);
-    sessionStorage.removeItem(SK_INCIDENT);
+    localStorage.removeItem(SK_SCREEN);
+    localStorage.removeItem(SK_VEHICLE);
+    localStorage.removeItem(SK_INCIDENT);
+    localStorage.removeItem('tlp_incident_draft');
     setIsAuthenticated(false);
     setHasCompletedOnboarding(false);
     setUser(null);
