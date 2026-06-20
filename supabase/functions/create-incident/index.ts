@@ -4,6 +4,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 // (comma-separated list, set in Supabase Dashboard → Edge Functions → Secrets)
 const BASE_ALLOWED_ORIGINS = [
   'https://tinlip-care-hub.lovable.app',
+  'https://tinlip-care-hub.vercel.app',
 ]
 
 function getAllowedOrigins(): string[] {

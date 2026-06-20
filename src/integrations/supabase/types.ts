@@ -396,6 +396,7 @@ export type Database = {
         Args: { p_otp_hash: string; p_otp_token: string; p_user_id: string }
         Returns: Json
       }
+      is_admin: { Args: never; Returns: boolean }
       verify_and_invalidate_otp: {
         Args: { p_input_hash: string; p_otp_token: string; p_user_id: string }
         Returns: Json
