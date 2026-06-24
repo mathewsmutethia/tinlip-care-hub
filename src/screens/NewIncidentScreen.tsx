@@ -124,33 +124,36 @@ export default function NewIncidentScreen() {
     setGpsLoading(true);
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
+        const { latitude, longitude } = pos.coords;
+        const controller = new AbortController();
+        const geocodeTimeout = setTimeout(() => controller.abort(), 8000);
         try {
-          const { latitude, longitude } = pos.coords;
-          const controller = new AbortController();
-          const geocodeTimeout = setTimeout(() => controller.abort(), 5000);
           const res = await fetch(
             `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`,
-            {
-              headers: { 'Accept-Language': 'en', 'User-Agent': 'tinlip-client/1.0 (support@tinlipautocare.co.ke)' },
-              signal: controller.signal,
-            }
+            { headers: { 'Accept-Language': 'en' }, signal: controller.signal }
           );
           clearTimeout(geocodeTimeout);
-          const data = await res.json();
-          const address = data.display_name || `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
-          setLocation(address);
+          if (res.ok) {
+            const data = await res.json();
+            setLocation(data.display_name || `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`);
+          } else {
+            setLocation(`${latitude.toFixed(5)}, ${longitude.toFixed(5)}`);
+          }
         } catch {
-          const { latitude, longitude } = pos.coords;
+          clearTimeout(geocodeTimeout);
           setLocation(`${latitude.toFixed(5)}, ${longitude.toFixed(5)}`);
+        } finally {
+          setGpsLoading(false);
         }
-        setGpsLoading(false);
       },
       (err) => {
         setGpsLoading(false);
         if (err.code === err.PERMISSION_DENIED) {
-          toast({ title: 'Location access denied', description: 'Please enter your location manually.', variant: 'destructive' });
+          toast({ title: 'Location access denied', description: 'Please enable location in your browser settings, then try again.', variant: 'destructive' });
+        } else if (err.code === err.POSITION_UNAVAILABLE) {
+          toast({ title: 'Location unavailable', description: 'Could not determine your position. Enter it manually.', variant: 'destructive' });
         } else {
-          toast({ title: 'Could not get location', description: 'Please enter your location manually.' });
+          toast({ title: 'Location timed out', description: 'GPS took too long. Enter your location manually.' });
         }
       },
       { timeout: 10000, maximumAge: 60000 }
